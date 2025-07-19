@@ -166,11 +166,11 @@ export const deleteEntry = async (entryId: string) => {
   }
 };
 
-export const voteEntry = async (entryId: string, increment: boolean) => {
+export const voteEntry = async (entryId: string, isIncrement: boolean) => {
   try {
     const entryRef = doc(db, 'entries', entryId);
     await updateDoc(entryRef, {
-      votes: increment ? increment(1) : increment(-1)
+      votes: isIncrement ? increment(1) : increment(-1)
     });
     return { success: true };
   } catch (error: any) {

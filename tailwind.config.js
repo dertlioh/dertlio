@@ -1,9 +1,9 @@
-```javascript
+/** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [    './app/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',  ],
+  content: ["./{app,components,libs,pages,hooks}/**/*.{html,js,ts,jsx,tsx}"],
   theme: {
-    extend: {      fontFamily: {        pacifico: ['var(--font-pacifico)', 'serif'],
-      },
-    },  },
-  plugins: [],}
+    extend: {},
+  },
+  plugins: [],
+}
+

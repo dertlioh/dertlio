@@ -19,7 +19,7 @@ import {
   signOut,
   User 
 } from 'firebase/auth';
-import { db, auth } from './firebase';
+import { db, auth } from '../lib/firebase';
 
 export interface Entry {
   id?: string;

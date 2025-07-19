@@ -1,7 +1,7 @@
 
-import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { initializeApp, getApps } from 'firebase/app';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAXZAwILOciHuT_8vZzjNHjB2eQxPFGZL0",
@@ -13,6 +13,14 @@ const firebaseConfig = {
   measurementId: "G-YEKKG1M2JW"
 };
 
-const app = initializeApp(firebaseConfig);
+let app;
+if (getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+} else {
+  app = getApps()[0];
+}
+
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+
+export default app;

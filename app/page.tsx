@@ -18,7 +18,8 @@ import {
   registerUser,
   loginUser,
   logoutUser,
-  subscribeToEntries
+  subscribeToEntries,
+  getUserVote
 } from '../lib/firebaseService';
 
 export default function Home() {
@@ -34,6 +35,9 @@ export default function Home() {
   const [filteredEntries, setFilteredEntries] = useState<Entry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [userVotes, setUserVotes] = useState<{ [key: string]: 'up' | 'down' | null }>({});
+  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>({});
 
   const [newEntry, setNewEntry] = useState({
     company: '',
@@ -48,6 +52,40 @@ export default function Home() {
     email: '',
     password: ''
   });
+
+  // Kullanıcı oylarını yükle
+  const loadUserVotes = async (entriesData: Entry[]) => {
+    if (!user) return;
+    
+    const votes: { [key: string]: 'up' | 'down' | null } = {};
+    
+    for (const entry of entriesData) {
+      if (entry.id) {
+        const voteResult = await getUserVote(entry.id, user.uid);
+        if (voteResult.success) {
+          votes[entry.id] = voteResult.vote;
+        }
+      }
+    }
+    
+    setUserVotes(votes);
+  };
+
+  // Entry'lerin yanıtlarını yükle
+  const loadReplies = async (entriesData: Entry[]) => {
+    const repliesData: { [key: string]: Reply[] } = {};
+    
+    for (const entry of entriesData) {
+      if (entry.id) {
+        const repliesResult = await getReplies(entry.id);
+        if (repliesResult.success) {
+          repliesData[entry.id] = repliesResult.replies;
+        }
+      }
+    }
+    
+    setEntriesWithReplies(repliesData);
+  };
 
   // Optimized data loading
   useEffect(() => {
@@ -65,6 +103,12 @@ export default function Home() {
         if (entriesResult.success) {
           setEntries(entriesResult.entries);
           setFilteredEntries(entriesResult.entries);
+          
+          // Load user votes and replies
+          await Promise.all([
+            loadUserVotes(entriesResult.entries),
+            loadReplies(entriesResult.entries)
+          ]);
         } else {
           setError('Veriler yüklenirken hata oluştu');
         }
@@ -87,9 +131,15 @@ export default function Home() {
     let unsubscribe: (() => void) | null = null;
     
     setTimeout(() => {
-      unsubscribe = subscribeToEntries((newEntries) => {
+      unsubscribe = subscribeToEntries(async (newEntries) => {
         setEntries(newEntries);
         handleSearch(searchQuery, newEntries);
+        
+        // Reload user votes and replies for new entries
+        await Promise.all([
+          loadUserVotes(newEntries),
+          loadReplies(newEntries)
+        ]);
       });
     }, 1000);
 
@@ -98,7 +148,7 @@ export default function Home() {
         unsubscribe();
       }
     };
-  }, []);
+  }, [user]);
 
   // Debounced search
   useEffect(() => {
@@ -125,13 +175,27 @@ export default function Home() {
     setFilteredEntries(filtered);
   };
 
+  // 🔧 FIX 2: Beğeni sistemi düzeltildi
   const handleVote = async (entryId: string, increment: boolean) => {
     if (!user) {
       setShowAuthModal(true);
       return;
     }
     
-    await voteEntry(entryId, increment);
+    const result = await voteEntry(entryId, increment, user.uid);
+    if (result.success) {
+      // Update user vote state
+      const currentVote = userVotes[entryId];
+      const newVoteType = increment ? 'up' : 'down';
+      
+      if (currentVote === newVoteType) {
+        // Cancel vote
+        setUserVotes(prev => ({ ...prev, [entryId]: null }));
+      } else {
+        // Set new vote
+        setUserVotes(prev => ({ ...prev, [entryId]: newVoteType }));
+      }
+    }
   };
 
   const handleSubmitEntry = async (e: React.FormEvent) => {
@@ -163,8 +227,10 @@ export default function Home() {
     }
   };
 
+  // 🔧 FIX 4: Giriş hatası mesajları düzeltildi
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError(null);
     
     if (authMode === 'register') {
       if (!authForm.username || !authForm.email || !authForm.password) return;
@@ -174,6 +240,8 @@ export default function Home() {
         setShowAuthModal(false);
         setShowWriteModal(true);
         setAuthForm({ username: '', email: '', password: '' });
+      } else {
+        setAuthError(result.error || 'Kayıt sırasında hata oluştu');
       }
     } else {
       if (!authForm.email || !authForm.password) return;
@@ -183,12 +251,16 @@ export default function Home() {
         setShowAuthModal(false);
         setShowWriteModal(true);
         setAuthForm({ username: '', email: '', password: '' });
+      } else {
+        setAuthError(result.error || 'Giriş sırasında hata oluştu');
       }
     }
   };
 
   const handleLogout = async () => {
     await logoutUser();
+    setUserVotes({});
+    setEntriesWithReplies({});
   };
 
   const handleWriteClick = () => {
@@ -208,6 +280,7 @@ export default function Home() {
     setShowReplyModal(true);
   };
 
+  // 🔧 FIX 3: Yanıt sistemi düzeltildi
   const handleSubmitReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReply.trim() || !replyingToEntry || !user) return;
@@ -223,6 +296,15 @@ export default function Home() {
       setNewReply('');
       setReplyingToEntry(null);
       setShowReplyModal(false);
+      
+      // Refresh replies for this entry
+      const repliesResult = await getReplies(replyingToEntry);
+      if (repliesResult.success) {
+        setEntriesWithReplies(prev => ({
+          ...prev,
+          [replyingToEntry]: repliesResult.replies
+        }));
+      }
     }
   };
 
@@ -342,7 +424,7 @@ export default function Home() {
                 {companyStats.slice(0, 8).map((company, index) => (
                   <Link 
                     key={company.name}
-                    href={`/firma/${company.name.toLowerCase().replace(/\\s+/g, '-')}`}
+                    href={`/firma/${company.name.toLowerCase().replace(/\s+/g, '-')}`}
                     className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
@@ -401,7 +483,7 @@ export default function Home() {
                     <div className="flex flex-wrap items-start justify-between mb-3 gap-2">
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         <Link 
-                          href={`/firma/${entry.company.toLowerCase().replace(/\\s+/g, '-')}`}
+                          href={`/firma/${entry.company.toLowerCase().replace(/\s+/g, '-')}`}
                           className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-medium hover:bg-red-200 transition-colors cursor-pointer"
                         >
                           {entry.company}
@@ -420,16 +502,24 @@ export default function Home() {
                       <div className="flex items-center gap-2">
                         <button 
                           onClick={() => handleVote(entry.id!, true)}
-                          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-green-100 transition-colors cursor-pointer"
+                          className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
+                            userVotes[entry.id!] === 'up' 
+                              ? 'bg-green-100 text-green-700' 
+                              : 'hover:bg-green-100 text-green-600'
+                          }`}
                         >
-                          <i className="ri-thumb-up-line text-green-600"></i>
+                          <i className="ri-thumb-up-line"></i>
                         </button>
                         <span className="text-sm font-medium text-gray-700">{entry.votes}</span>
                         <button 
                           onClick={() => handleVote(entry.id!, false)}
-                          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-100 transition-colors cursor-pointer"
+                          className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
+                            userVotes[entry.id!] === 'down' 
+                              ? 'bg-red-100 text-red-700' 
+                              : 'hover:bg-red-100 text-red-600'
+                          }`}
                         >
-                          <i className="ri-thumb-down-line text-red-600"></i>
+                          <i className="ri-thumb-down-line"></i>
                         </button>
                       </div>
 
@@ -439,8 +529,29 @@ export default function Home() {
                       >
                         <i className="ri-chat-3-line"></i>
                         <span className="text-sm hidden sm:inline">Yanıtla</span>
+                        {entriesWithReplies[entry.id!] && entriesWithReplies[entry.id!].length > 0 && (
+                          <span className="text-sm">({entriesWithReplies[entry.id!].length})</span>
+                        )}
                       </button>
                     </div>
+
+                    {/* Replies Section */}
+                    {entriesWithReplies[entry.id!] && entriesWithReplies[entry.id!].length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <div className="space-y-3">
+                          {entriesWithReplies[entry.id!].map((reply) => (
+                            <div key={reply.id} className="bg-gray-50 rounded-lg p-3">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-sm font-medium text-gray-700">{reply.author}</span>
+                                <span className="text-xs text-gray-500">•</span>
+                                <span className="text-xs text-gray-500">{reply.date}</span>
+                              </div>
+                              <p className="text-sm text-gray-700">{reply.content}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -458,12 +569,21 @@ export default function Home() {
                 {authMode === 'login' ? 'Giriş Yap' : 'Hesap Oluştur'}
               </h2>
               <button 
-                onClick={() => setShowAuthModal(false)}
+                onClick={() => {
+                  setShowAuthModal(false);
+                  setAuthError(null);
+                }}
                 className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full cursor-pointer"
               >
                 <i className="ri-close-line text-gray-500"></i>
               </button>
             </div>
+
+            {authError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-700">{authError}</p>
+              </div>
+            )}
 
             <form onSubmit={handleAuth} className="space-y-4">
               {authMode === 'register' && (
@@ -511,7 +631,10 @@ export default function Home() {
 
             <div className="mt-4 text-center">
               <button
-                onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+                onClick={() => {
+                  setAuthMode(authMode === 'login' ? 'register' : 'login');
+                  setAuthError(null);
+                }}
                 className="text-red-600 hover:text-red-700 text-sm cursor-pointer"
               >
                 {authMode === 'login' 
@@ -529,7 +652,7 @@ export default function Home() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Dertini Anlat</h2>
+              <h2 className="text-xl font-semibold">Derdini Anlat</h2>
               <button 
                 onClick={() => setShowWriteModal(false)}
                 className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full cursor-pointer"

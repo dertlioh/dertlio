@@ -12,7 +12,8 @@ import {
   getCompanyStats,
   deleteEntry,
   updateEntry,
-  subscribeToEntries
+  subscribeToEntries,
+  voteEntry
 } from '../../lib/firebaseService';
 
 export default function AdminPanel() {

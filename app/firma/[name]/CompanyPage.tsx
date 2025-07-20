@@ -7,13 +7,17 @@ import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth } from '../../../lib/firebase';
 import { 
   Entry, 
+  Reply,
   addEntry, 
   getEntries, 
   voteEntry, 
   registerUser,
   loginUser,
   logoutUser,
-  subscribeToEntries
+  subscribeToEntries,
+  getUserVote,
+  getReplies,
+  addReply
 } from '../../../lib/firebaseService';
 
 const companyInfo: { [key: string]: { name: string; description: string } } = {
@@ -40,13 +44,19 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [showWriteModal, setShowWriteModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showReplyModal, setShowReplyModal] = useState(false);
+  const [replyingToEntry, setReplyingToEntry] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredEntries, setFilteredEntries] = useState<Entry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [userVotes, setUserVotes] = useState<{ [key: string]: 'up' | 'down' | null }>({});
+  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>({});
   
   const [newEntry, setNewEntry] = useState({ title: '', content: '' });
+  const [newReply, setNewReply] = useState('');
   const [authForm, setAuthForm] = useState({
     username: '',
     email: '',
@@ -58,16 +68,57 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
     description: `${companyName.charAt(0).toUpperCase() + companyName.slice(1).replace(/-/g, ' ')} hakkında şikayetler`
   };
 
+  // Load user votes
+  const loadUserVotes = async (entriesData: Entry[]) => {
+    if (!user) return;
+    
+    const votes: { [key: string]: 'up' | 'down' | null } = {};
+    
+    for (const entry of entriesData) {
+      if (entry.id) {
+        const voteResult = await getUserVote(entry.id, user.uid);
+        if (voteResult.success) {
+          votes[entry.id] = voteResult.vote;
+        }
+      }
+    }
+    
+    setUserVotes(votes);
+  };
+
+  // Load replies
+  const loadReplies = async (entriesData: Entry[]) => {
+    const repliesData: { [key: string]: Reply[] } = {};
+    
+    for (const entry of entriesData) {
+      if (entry.id) {
+        const repliesResult = await getReplies(entry.id);
+        if (repliesResult.success) {
+          repliesData[entry.id] = repliesResult.replies;
+        }
+      }
+    }
+    
+    setEntriesWithReplies(repliesData);
+  };
+
   useEffect(() => {
     const loadEntries = async () => {
       try {
         setIsLoading(true);
         setError(null);
         
+        // 🔧 FIX 1: Şirket adına göre entry'leri getir
         const result = await getEntries(company.name);
         if (result.success) {
           setEntries(result.entries);
           setFilteredEntries(result.entries);
+          
+          // Load user votes and replies
+          await Promise.all([
+            loadUserVotes(result.entries),
+            loadReplies(result.entries)
+          ]);
         } else {
           setError('Veriler yüklenirken hata oluştu');
         }
@@ -84,9 +135,15 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
     let unsubscribe: (() => void) | null = null;
     
     setTimeout(() => {
-      unsubscribe = subscribeToEntries((newEntries) => {
+      unsubscribe = subscribeToEntries(async (newEntries) => {
         setEntries(newEntries);
         handleSearch(searchQuery, newEntries);
+        
+        // Reload user votes and replies
+        await Promise.all([
+          loadUserVotes(newEntries),
+          loadReplies(newEntries)
+        ]);
       }, company.name);
     }, 1000);
 
@@ -95,7 +152,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
         unsubscribe();
       }
     };
-  }, [companyName, company.name]);
+  }, [companyName, company.name, user]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -126,7 +183,20 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
       return;
     }
     
-    await voteEntry(entryId, increment);
+    const result = await voteEntry(entryId, increment, user.uid);
+    if (result.success) {
+      // Update user vote state
+      const currentVote = userVotes[entryId];
+      const newVoteType = increment ? 'up' : 'down';
+      
+      if (currentVote === newVoteType) {
+        // Cancel vote
+        setUserVotes(prev => ({ ...prev, [entryId]: null }));
+      } else {
+        // Set new vote
+        setUserVotes(prev => ({ ...prev, [entryId]: newVoteType }));
+      }
+    }
   };
 
   const handleSubmitEntry = async (e: React.FormEvent) => {
@@ -154,6 +224,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError(null);
     
     if (authMode === 'register') {
       if (!authForm.username || !authForm.email || !authForm.password) return;
@@ -163,6 +234,8 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
         setShowAuthModal(false);
         setShowWriteModal(true);
         setAuthForm({ username: '', email: '', password: '' });
+      } else {
+        setAuthError(result.error || 'Kayıt sırasında hata oluştu');
       }
     } else {
       if (!authForm.email || !authForm.password) return;
@@ -172,12 +245,16 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
         setShowAuthModal(false);
         setShowWriteModal(true);
         setAuthForm({ username: '', email: '', password: '' });
+      } else {
+        setAuthError(result.error || 'Giriş sırasında hata oluştu');
       }
     }
   };
 
   const handleLogout = async () => {
     await logoutUser();
+    setUserVotes({});
+    setEntriesWithReplies({});
   };
 
   const handleWriteClick = () => {
@@ -185,6 +262,42 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
       setShowWriteModal(true);
     } else {
       setShowAuthModal(true);
+    }
+  };
+
+  const handleReply = async (entryId: string) => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+    setReplyingToEntry(entryId);
+    setShowReplyModal(true);
+  };
+
+  const handleSubmitReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newReply.trim() || !replyingToEntry || !user) return;
+
+    const result = await addReply(replyingToEntry, {
+      content: newReply,
+      author: authForm.username || user.email?.split('@')[0] || 'Anonim',
+      authorId: user.uid,
+      date: new Date().toISOString().split('T')[0]
+    });
+
+    if (result.success) {
+      setNewReply('');
+      setReplyingToEntry(null);
+      setShowReplyModal(false);
+      
+      // Refresh replies for this entry
+      const repliesResult = await getReplies(replyingToEntry);
+      if (repliesResult.success) {
+        setEntriesWithReplies(prev => ({
+          ...prev,
+          [replyingToEntry]: repliesResult.replies
+        }));
+      }
     }
   };
 
@@ -371,24 +484,56 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                   <div className="flex items-center gap-2">
                     <button 
                       onClick={() => handleVote(entry.id!, true)}
-                      className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-green-100 transition-colors cursor-pointer"
+                      className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
+                        userVotes[entry.id!] === 'up' 
+                          ? 'bg-green-100 text-green-700' 
+                          : 'hover:bg-green-100 text-green-600'
+                      }`}
                     >
-                      <i className="ri-thumb-up-line text-green-600"></i>
+                      <i className="ri-thumb-up-line"></i>
                     </button>
                     <span className="text-sm font-medium text-gray-700">{entry.votes}</span>
                     <button 
                       onClick={() => handleVote(entry.id!, false)}
-                      className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-100 transition-colors cursor-pointer"
+                      className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
+                        userVotes[entry.id!] === 'down' 
+                          ? 'bg-red-100 text-red-700' 
+                          : 'hover:bg-red-100 text-red-600'
+                      }`}
                     >
-                      <i className="ri-thumb-down-line text-red-600"></i>
+                      <i className="ri-thumb-down-line"></i>
                     </button>
                   </div>
                   
-                  <button className="flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors cursor-pointer">
+                  <button 
+                    onClick={() => handleReply(entry.id!)}
+                    className="flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors cursor-pointer"
+                  >
                     <i className="ri-chat-3-line"></i>
                     <span className="text-sm hidden sm:inline">Yanıtla</span>
+                    {entriesWithReplies[entry.id!] && entriesWithReplies[entry.id!].length > 0 && (
+                      <span className="text-sm">({entriesWithReplies[entry.id!].length})</span>
+                    )}
                   </button>
                 </div>
+
+                {/* Replies Section */}
+                {entriesWithReplies[entry.id!] && entriesWithReplies[entry.id!].length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <div className="space-y-3">
+                      {entriesWithReplies[entry.id!].map((reply) => (
+                        <div key={reply.id} className="bg-gray-50 rounded-lg p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-sm font-medium text-gray-700">{reply.author}</span>
+                            <span className="text-xs text-gray-500">•</span>
+                            <span className="text-xs text-gray-500">{reply.date}</span>
+                          </div>
+                          <p className="text-sm text-gray-700">{reply.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -404,12 +549,21 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                 {authMode === 'login' ? 'Giriş Yap' : 'Hesap Oluştur'}
               </h2>
               <button 
-                onClick={() => setShowAuthModal(false)}
+                onClick={() => {
+                  setShowAuthModal(false);
+                  setAuthError(null);
+                }}
                 className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full cursor-pointer"
               >
                 <i className="ri-close-line text-gray-500"></i>
               </button>
             </div>
+            
+            {authError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-700">{authError}</p>
+              </div>
+            )}
             
             <form onSubmit={handleAuth} className="space-y-4">
               {authMode === 'register' && (
@@ -457,7 +611,10 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
             
             <div className="mt-4 text-center">
               <button
-                onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+                onClick={() => {
+                  setAuthMode(authMode === 'login' ? 'register' : 'login');
+                  setAuthError(null);
+                }}
                 className="text-red-600 hover:text-red-700 text-sm cursor-pointer"
               >
                 {authMode === 'login' 
@@ -516,6 +673,47 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                 className="w-full bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 transition-colors font-medium cursor-pointer whitespace-nowrap"
               >
                 Entry Paylaş
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reply Modal */}
+      {showReplyModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Yanıt Yaz</h2>
+              <button 
+                onClick={() => setShowReplyModal(false)}
+                className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full cursor-pointer"
+              >
+                <i className="ri-close-line text-gray-500"></i>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitReply} className="space-y-4">
+              <div>
+                <textarea
+                  placeholder="Yanıtını yaz..."
+                  value={newReply}
+                  onChange={(e) => setNewReply(e.target.value)}
+                  rows={4}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm resize-none"
+                  maxLength={300}
+                  required
+                />
+                <div className="text-right text-xs text-gray-500 mt-1">
+                  {newReply.length}/300
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 transition-colors font-medium cursor-pointer whitespace-nowrap"
+              >
+                Yanıtı Gönder
               </button>
             </form>
           </div>

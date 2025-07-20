@@ -11,7 +11,9 @@ import {
   doc,
   increment,
   onSnapshot,
-  Timestamp 
+  Timestamp,
+  setDoc,
+  getDoc 
 } from 'firebase/firestore';
 import { 
   createUserWithEmailAndPassword, 
@@ -49,6 +51,13 @@ export interface CompanyStats {
   totalComplaints: number;
 }
 
+export interface Vote {
+  userId: string;
+  entryId: string;
+  type: 'up' | 'down';
+  createdAt: Timestamp;
+}
+
 // Authentication
 export const registerUser = async (email: string, password: string, displayName: string) => {
   try {
@@ -65,7 +74,17 @@ export const registerUser = async (email: string, password: string, displayName:
     
     return { success: true, user };
   } catch (error: any) {
-    return { success: false, error: error.message };
+    let errorMessage = 'Bir hata oluştu';
+    
+    if (error.code === 'auth/email-already-in-use') {
+      errorMessage = 'Bu e-posta adresi zaten kullanılıyor';
+    } else if (error.code === 'auth/weak-password') {
+      errorMessage = 'Şifre en az 6 karakter olmalı';
+    } else if (error.code === 'auth/invalid-email') {
+      errorMessage = 'Geçersiz e-posta adresi';
+    }
+    
+    return { success: false, error: errorMessage };
   }
 };
 
@@ -74,7 +93,17 @@ export const loginUser = async (email: string, password: string) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     return { success: true, user: userCredential.user };
   } catch (error: any) {
-    return { success: false, error: error.message };
+    let errorMessage = 'Giriş başarısız';
+    
+    if (error.code === 'auth/user-not-found') {
+      errorMessage = 'Bu e-posta ile bir hesap bulunamadı';
+    } else if (error.code === 'auth/wrong-password') {
+      errorMessage = 'Şifre yanlış';
+    } else if (error.code === 'auth/invalid-email') {
+      errorMessage = 'Geçersiz e-posta adresi';
+    }
+    
+    return { success: false, error: errorMessage };
   }
 };
 
@@ -101,15 +130,40 @@ export const addEntry = async (entry: Omit<Entry, 'id' | 'votes' | 'createdAt'>)
   }
 };
 
+// 🔧 FIX 1: Firma sayfasında entry'leri doğru şekilde getir
 export const getEntries = async (companyName?: string) => {
   try {
     let q;
     if (companyName) {
-      q = query(
-        collection(db, 'entries'),
-        where('company', '==', companyName),
-        orderBy('createdAt', 'desc')
-      );
+      // Büyük-küçük harf duyarlılığını kaldır ve normalize et
+      const normalizedCompanyName = companyName.toLowerCase().trim();
+      
+      // Tüm entry'leri getir ve client-side filter uygula
+      q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
+      
+      const querySnapshot = await getDocs(q);
+      const entries: Entry[] = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        const entryCompanyName = data.company.toLowerCase().trim();
+        
+        // Eşleştirme: tam eşleşme veya URL formatında eşleşme
+        const urlFormat = entryCompanyName.replace(/\s+/g, '-');
+        
+        if (entryCompanyName === normalizedCompanyName || 
+            urlFormat === normalizedCompanyName ||
+            entryCompanyName.includes(normalizedCompanyName) ||
+            normalizedCompanyName.includes(entryCompanyName)) {
+          entries.push({
+            id: doc.id,
+            ...data,
+            date: data.createdAt.toDate().toISOString().split('T')[0]
+          } as Entry);
+        }
+      });
+      
+      return { success: true, entries };
     } else {
       q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
     }
@@ -160,25 +214,94 @@ export const deleteEntry = async (entryId: string) => {
     
     await Promise.all(deletePromises);
     
+    // Also delete all votes for this entry
+    const votesQuery = query(
+      collection(db, 'votes'),
+      where('entryId', '==', entryId)
+    );
+    const votesSnapshot = await getDocs(votesQuery);
+    
+    const deleteVotesPromises = votesSnapshot.docs.map(voteDoc => 
+      deleteDoc(doc(db, 'votes', voteDoc.id))
+    );
+    
+    await Promise.all(deleteVotesPromises);
+    
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 };
 
-export const voteEntry = async (entryId: string, isIncrement: boolean) => {
+// 🔧 FIX 2: Beğeni sistemi - Her kullanıcı sadece 1 kez oy verebilir
+export const voteEntry = async (entryId: string, isIncrement: boolean, userId: string) => {
   try {
+    const voteId = `${userId}_${entryId}`;
+    const voteRef = doc(db, 'votes', voteId);
     const entryRef = doc(db, 'entries', entryId);
-    await updateDoc(entryRef, {
-      votes: isIncrement ? increment(1) : increment(-1)
-    });
+    
+    // Mevcut oyu kontrol et
+    const voteDoc = await getDoc(voteRef);
+    
+    if (voteDoc.exists()) {
+      const existingVote = voteDoc.data();
+      const newVoteType = isIncrement ? 'up' : 'down';
+      
+      if (existingVote.type === newVoteType) {
+        // Aynı oy türü - oyu iptal et
+        await deleteDoc(voteRef);
+        await updateDoc(entryRef, {
+          votes: increment(isIncrement ? -1 : 1)
+        });
+      } else {
+        // Farklı oy türü - oyu değiştir
+        await updateDoc(voteRef, {
+          type: newVoteType,
+          createdAt: Timestamp.now()
+        });
+        // Önceki oyu iptal et ve yeni oyu ekle (2 birim değişim)
+        await updateDoc(entryRef, {
+          votes: increment(isIncrement ? 2 : -2)
+        });
+      }
+    } else {
+      // Yeni oy
+      await setDoc(voteRef, {
+        userId,
+        entryId,
+        type: isIncrement ? 'up' : 'down',
+        createdAt: Timestamp.now()
+      });
+      
+      await updateDoc(entryRef, {
+        votes: increment(isIncrement ? 1 : -1)
+      });
+    }
+    
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 };
 
-// Replies
+// Kullanıcının entry'ye verdiği oyu getir
+export const getUserVote = async (entryId: string, userId: string) => {
+  try {
+    const voteId = `${userId}_${entryId}`;
+    const voteRef = doc(db, 'votes', voteId);
+    const voteDoc = await getDoc(voteRef);
+    
+    if (voteDoc.exists()) {
+      return { success: true, vote: voteDoc.data().type };
+    } else {
+      return { success: true, vote: null };
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message, vote: null };
+  }
+};
+
+// 🔧 FIX 3: Yanıt sistemi düzeltildi
 export const addReply = async (entryId: string, reply: Omit<Reply, 'id' | 'votes' | 'createdAt'>) => {
   try {
     const docRef = await addDoc(collection(db, 'replies'), {
@@ -244,29 +367,49 @@ export const getCompanyStats = async () => {
   }
 };
 
-// Real-time listeners
+// Real-time listeners - FIX 1 için güncellendi
 export const subscribeToEntries = (callback: (entries: Entry[]) => void, companyName?: string) => {
-  let q;
   if (companyName) {
-    q = query(
-      collection(db, 'entries'),
-      where('company', '==', companyName),
-      orderBy('createdAt', 'desc')
-    );
-  } else {
-    q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
-  }
-  
-  return onSnapshot(q, (querySnapshot) => {
-    const entries: Entry[] = [];
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      entries.push({
-        id: doc.id,
-        ...data,
-        date: data.createdAt ? data.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
-      } as Entry);
+    // Firma sayfası için tüm entry'leri dinle ve client-side filter uygula
+    const q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
+    
+    return onSnapshot(q, (querySnapshot) => {
+      const normalizedCompanyName = companyName.toLowerCase().trim();
+      const entries: Entry[] = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        const entryCompanyName = data.company.toLowerCase().trim();
+        const urlFormat = entryCompanyName.replace(/\s+/g, '-');
+        
+        if (entryCompanyName === normalizedCompanyName || 
+            urlFormat === normalizedCompanyName ||
+            entryCompanyName.includes(normalizedCompanyName) ||
+            normalizedCompanyName.includes(entryCompanyName)) {
+          entries.push({
+            id: doc.id,
+            ...data,
+            date: data.createdAt ? data.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+          } as Entry);
+        }
+      });
+      
+      callback(entries);
     });
-    callback(entries);
-  });
+  } else {
+    const q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
+    
+    return onSnapshot(q, (querySnapshot) => {
+      const entries: Entry[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        entries.push({
+          id: doc.id,
+          ...data,
+          date: data.createdAt ? data.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+        } as Entry);
+      });
+      callback(entries);
+    });
+  }
 };

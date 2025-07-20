@@ -41,7 +41,7 @@ export default function AdminPanel() {
 
   useEffect(() => {
     if (loading) return;
-    
+
     if (!user || !isAdmin) {
       window.location.href = '/';
       return;
@@ -49,18 +49,18 @@ export default function AdminPanel() {
 
     const loadData = async () => {
       setIsLoading(true);
-      
+
       try {
         const [entriesResult, statsResult] = await Promise.all([
           getEntries(),
           getCompanyStats()
         ]);
-        
+
         if (entriesResult.success) {
           setEntries(entriesResult.entries);
           setFilteredEntries(entriesResult.entries);
         }
-        
+
         if (statsResult.success) {
           setCompanyStats(statsResult.stats);
         }
@@ -84,7 +84,7 @@ export default function AdminPanel() {
   const handleSearch = (query: string, entriesData?: Entry[]) => {
     setSearchQuery(query);
     const dataToFilter = entriesData || entries;
-    
+
     if (!query.trim()) {
       setFilteredEntries(dataToFilter);
       return;
@@ -135,7 +135,7 @@ export default function AdminPanel() {
     if (result.success) {
       setShowDeleteModal(false);
       setDeletingEntryId(null);
-      
+
       const statsResult = await getCompanyStats();
       if (statsResult.success) {
         setCompanyStats(statsResult.stats);
@@ -257,7 +257,7 @@ export default function AdminPanel() {
                         <span className="text-gray-500 text-sm">•</span>
                         <span className="text-gray-500 text-sm">{entry.date}</span>
                         <span className="text-gray-500 text-sm">•</span>
-                        <span className="text-gray-500 text-sm">{entry.votes} oy</span>
+                        <span className="text-gray-500 text-sm">{(entry.likes || 0) + (entry.dislikes || 0)} votes</span>
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -326,9 +326,9 @@ export default function AdminPanel() {
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-purple-600">
-                        {entries.reduce((total, entry) => total + entry.votes, 0)}
+                        {entries.reduce((total, entry) => total + (entry.likes || 0) + (entry.dislikes || 0), 0)}
                       </div>
-                      <div className="text-sm text-purple-600">Toplam Oy</div>
+                      <div className="text-sm text-purple-600">Total Votes</div>
                     </div>
                   </div>
                 </div>
@@ -463,7 +463,7 @@ export default function AdminPanel() {
               <i className="ri-error-warning-line text-4xl text-red-600 mb-4"></i>
               <h2 className="text-xl font-semibold mb-2">Entry Silinsin mi?</h2>
               <p className="text-gray-600 mb-6">Bu işlem geri alınamaz!</p>
-              
+
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowDeleteModal(false)}

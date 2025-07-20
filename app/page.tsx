@@ -19,7 +19,8 @@ import {
   loginUser,
   logoutUser,
   subscribeToEntries,
-  getUserVote
+  getUserVote,
+  subscribeToReplies
 } from '../lib/firebaseService';
 
 export default function Home() {
@@ -36,8 +37,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [userVotes, setUserVotes] = useState<{ [key: string]: 'up' | 'down' | null }>({});
-  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>({});
+  const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>([]);
+  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>( {});
 
   const [newEntry, setNewEntry] = useState({
     company: '',
@@ -53,12 +54,11 @@ export default function Home() {
     password: ''
   });
 
-  // Kullanıcı oylarını yükle
   const loadUserVotes = async (entriesData: Entry[]) => {
     if (!user) return;
-    
-    const votes: { [key: string]: 'up' | 'down' | null } = {};
-    
+
+    const votes: { [key: string]: 'like' | 'dislike' | null } = {};
+
     for (const entry of entriesData) {
       if (entry.id) {
         const voteResult = await getUserVote(entry.id, user.uid);
@@ -67,44 +67,47 @@ export default function Home() {
         }
       }
     }
-    
+
     setUserVotes(votes);
   };
 
-  // Entry'lerin yanıtlarını yükle
   const loadReplies = async (entriesData: Entry[]) => {
     const repliesData: { [key: string]: Reply[] } = {};
-    
+
     for (const entry of entriesData) {
       if (entry.id) {
         const repliesResult = await getReplies(entry.id);
         if (repliesResult.success) {
           repliesData[entry.id] = repliesResult.replies;
+
+          subscribeToReplies(entry.id, (newReplies) => {
+            setEntriesWithReplies(prev => ({ 
+              ...prev,
+              [entry.id!]: newReplies
+            }));
+          });
         }
       }
     }
-    
+
     setEntriesWithReplies(repliesData);
   };
 
-  // Optimized data loading
   useEffect(() => {
     const loadData = async () => {
       try {
         setIsLoading(true);
         setError(null);
-        
-        // Load entries and stats in parallel
+
         const [entriesResult, statsResult] = await Promise.all([
           getEntries(),
           getCompanyStats()
         ]);
-        
+
         if (entriesResult.success) {
           setEntries(entriesResult.entries);
           setFilteredEntries(entriesResult.entries);
-          
-          // Load user votes and replies
+
           await Promise.all([
             loadUserVotes(entriesResult.entries),
             loadReplies(entriesResult.entries)
@@ -112,11 +115,11 @@ export default function Home() {
         } else {
           setError('Veriler yüklenirken hata oluştu');
         }
-        
+
         if (statsResult.success) {
           setCompanyStats(statsResult.stats);
         }
-        
+
       } catch (err) {
         setError('Bağlantı hatası oluştu');
         console.error('Data loading error:', err);
@@ -127,15 +130,13 @@ export default function Home() {
 
     loadData();
 
-    // Set up real-time listener only after initial load
     let unsubscribe: (() => void) | null = null;
-    
+
     setTimeout(() => {
       unsubscribe = subscribeToEntries(async (newEntries) => {
         setEntries(newEntries);
         handleSearch(searchQuery, newEntries);
-        
-        // Reload user votes and replies for new entries
+
         await Promise.all([
           loadUserVotes(newEntries),
           loadReplies(newEntries)
@@ -150,7 +151,6 @@ export default function Home() {
     };
   }, [user]);
 
-  // Debounced search
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       handleSearch(searchQuery);
@@ -161,7 +161,7 @@ export default function Home() {
 
   const handleSearch = (query: string, entriesData?: Entry[]) => {
     const dataToFilter = entriesData || entries;
-    
+
     if (!query.trim()) {
       setFilteredEntries(dataToFilter);
       return;
@@ -175,25 +175,20 @@ export default function Home() {
     setFilteredEntries(filtered);
   };
 
-  // 🔧 FIX 2: Beğeni sistemi düzeltildi
-  const handleVote = async (entryId: string, increment: boolean) => {
+  const handleVote = async (entryId: string, voteType: 'like' | 'dislike') => {
     if (!user) {
       setShowAuthModal(true);
       return;
     }
-    
-    const result = await voteEntry(entryId, increment, user.uid);
+
+    const result = await voteEntry(entryId, voteType, user.uid);
     if (result.success) {
-      // Update user vote state
       const currentVote = userVotes[entryId];
-      const newVoteType = increment ? 'up' : 'down';
-      
-      if (currentVote === newVoteType) {
-        // Cancel vote
+
+      if (currentVote === voteType) {
         setUserVotes(prev => ({ ...prev, [entryId]: null }));
       } else {
-        // Set new vote
-        setUserVotes(prev => ({ ...prev, [entryId]: newVoteType }));
+        setUserVotes(prev => ({ ...prev, [entryId]: voteType }));
       }
     }
   };
@@ -218,8 +213,7 @@ export default function Home() {
     if (result.success) {
       setNewEntry({ company: '', title: '', content: '' });
       setShowWriteModal(false);
-      
-      // Refresh company stats
+
       const statsResult = await getCompanyStats();
       if (statsResult.success) {
         setCompanyStats(statsResult.stats);
@@ -227,14 +221,13 @@ export default function Home() {
     }
   };
 
-  // 🔧 FIX 4: Giriş hatası mesajları düzeltildi
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
-    
+
     if (authMode === 'register') {
       if (!authForm.username || !authForm.email || !authForm.password) return;
-      
+
       const result = await registerUser(authForm.email, authForm.password, authForm.username);
       if (result.success) {
         setShowAuthModal(false);
@@ -245,7 +238,7 @@ export default function Home() {
       }
     } else {
       if (!authForm.email || !authForm.password) return;
-      
+
       const result = await loginUser(authForm.email, authForm.password);
       if (result.success) {
         setShowAuthModal(false);
@@ -280,7 +273,6 @@ export default function Home() {
     setShowReplyModal(true);
   };
 
-  // 🔧 FIX 3: Yanıt sistemi düzeltildi
   const handleSubmitReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReply.trim() || !replyingToEntry || !user) return;
@@ -296,15 +288,6 @@ export default function Home() {
       setNewReply('');
       setReplyingToEntry(null);
       setShowReplyModal(false);
-      
-      // Refresh replies for this entry
-      const repliesResult = await getReplies(replyingToEntry);
-      if (repliesResult.success) {
-        setEntriesWithReplies(prev => ({
-          ...prev,
-          [replyingToEntry]: repliesResult.replies
-        }));
-      }
     }
   };
 
@@ -357,7 +340,6 @@ export default function Home() {
               dertlio
             </Link>
 
-            {/* Search Bar - Mobile Responsive */}
             <div className="flex-1 max-w-md mx-2 sm:mx-8">
               <div className="relative">
                 <input
@@ -424,7 +406,7 @@ export default function Home() {
                 {companyStats.slice(0, 8).map((company, index) => (
                   <Link 
                     key={company.name}
-                    href={`/firma/${company.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    href={`/firma/${company.name.toLowerCase().replace(/\\s+/g, '-')}`}
                     className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
@@ -483,7 +465,7 @@ export default function Home() {
                     <div className="flex flex-wrap items-start justify-between mb-3 gap-2">
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         <Link 
-                          href={`/firma/${entry.company.toLowerCase().replace(/\s+/g, '-')}`}
+                          href={`/firma/${entry.company.toLowerCase().replace(/\\s+/g, '-')}`}
                           className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-medium hover:bg-red-200 transition-colors cursor-pointer"
                         >
                           {entry.company}
@@ -498,28 +480,30 @@ export default function Home() {
                     <h3 className="text-lg font-semibold text-gray-800 mb-3">{entry.title}</h3>
                     <p className="text-gray-700 leading-relaxed mb-4 break-words">{entry.content}</p>
 
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-3">
                         <button 
-                          onClick={() => handleVote(entry.id!, true)}
-                          className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
-                            userVotes[entry.id!] === 'up' 
+                          onClick={() => handleVote(entry.id!, 'like')}
+                          className={`flex items-center gap-1 px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                            userVotes[entry.id!] === 'like' 
                               ? 'bg-green-100 text-green-700' 
                               : 'hover:bg-green-100 text-green-600'
                           }`}
                         >
                           <i className="ri-thumb-up-line"></i>
+                          <span className="text-sm font-medium">{entry.likes || 0}</span>
                         </button>
-                        <span className="text-sm font-medium text-gray-700">{entry.votes}</span>
+                        
                         <button 
-                          onClick={() => handleVote(entry.id!, false)}
-                          className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
-                            userVotes[entry.id!] === 'down' 
+                          onClick={() => handleVote(entry.id!, 'dislike')}
+                          className={`flex items-center gap-1 px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                            userVotes[entry.id!] === 'dislike' 
                               ? 'bg-red-100 text-red-700' 
                               : 'hover:bg-red-100 text-red-600'
                           }`}
                         >
                           <i className="ri-thumb-down-line"></i>
+                          <span className="text-sm font-medium">{entry.dislikes || 0}</span>
                         </button>
                       </div>
 
@@ -535,7 +519,6 @@ export default function Home() {
                       </button>
                     </div>
 
-                    {/* Replies Section */}
                     {entriesWithReplies[entry.id!] && entriesWithReplies[entry.id!].length > 0 && (
                       <div className="mt-4 pt-4 border-t border-gray-100">
                         <div className="space-y-3">

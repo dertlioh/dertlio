@@ -31,18 +31,21 @@ export interface Entry {
   author: string;
   authorId: string;
   date: string;
-  votes: number;
+  likes: number;
+  dislikes: number;
   replies?: Reply[];
   createdAt: Timestamp;
 }
 
 export interface Reply {
   id?: string;
+  entryId: string;
   content: string;
   author: string;
   authorId: string;
   date: string;
-  votes: number;
+  likes: number;
+  dislikes: number;
   createdAt: Timestamp;
 }
 
@@ -63,7 +66,7 @@ export const registerUser = async (email: string, password: string, displayName:
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    
+
     // Save user profile to Firestore
     await addDoc(collection(db, 'users'), {
       uid: user.uid,
@@ -71,11 +74,11 @@ export const registerUser = async (email: string, password: string, displayName:
       email,
       createdAt: Timestamp.now()
     });
-    
+
     return { success: true, user };
   } catch (error: any) {
     let errorMessage = 'Bir hata oluştu';
-    
+
     if (error.code === 'auth/email-already-in-use') {
       errorMessage = 'Bu e-posta adresi zaten kullanılıyor';
     } else if (error.code === 'auth/weak-password') {
@@ -83,7 +86,7 @@ export const registerUser = async (email: string, password: string, displayName:
     } else if (error.code === 'auth/invalid-email') {
       errorMessage = 'Geçersiz e-posta adresi';
     }
-    
+
     return { success: false, error: errorMessage };
   }
 };
@@ -94,7 +97,7 @@ export const loginUser = async (email: string, password: string) => {
     return { success: true, user: userCredential.user };
   } catch (error: any) {
     let errorMessage = 'Giriş başarısız';
-    
+
     if (error.code === 'auth/user-not-found') {
       errorMessage = 'Bu e-posta ile bir hesap bulunamadı';
     } else if (error.code === 'auth/wrong-password') {
@@ -102,7 +105,7 @@ export const loginUser = async (email: string, password: string) => {
     } else if (error.code === 'auth/invalid-email') {
       errorMessage = 'Geçersiz e-posta adresi';
     }
-    
+
     return { success: false, error: errorMessage };
   }
 };
@@ -117,11 +120,12 @@ export const logoutUser = async () => {
 };
 
 // Entries
-export const addEntry = async (entry: Omit<Entry, 'id' | 'votes' | 'createdAt'>) => {
+export const addEntry = async (entry: Omit<Entry, 'id' | 'likes' | 'dislikes' | 'createdAt'>) => {
   try {
     const docRef = await addDoc(collection(db, 'entries'), {
       ...entry,
-      votes: 0,
+      likes: 0,
+      dislikes: 0,
       createdAt: Timestamp.now()
     });
     return { success: true, id: docRef.id };
@@ -130,30 +134,26 @@ export const addEntry = async (entry: Omit<Entry, 'id' | 'votes' | 'createdAt'>)
   }
 };
 
-// 🔧 FIX 1: Firma sayfasında entry'leri doğru şekilde getir
 export const getEntries = async (companyName?: string) => {
   try {
     let q;
     if (companyName) {
-      // Büyük-küçük harf duyarlılığını kaldır ve normalize et
       const normalizedCompanyName = companyName.toLowerCase().trim();
-      
-      // Tüm entry'leri getir ve client-side filter uygula
+
       q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
-      
+
       const querySnapshot = await getDocs(q);
       const entries: Entry[] = [];
-      
+
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         const entryCompanyName = data.company.toLowerCase().trim();
-        
-        // Eşleştirme: tam eşleşme veya URL formatında eşleşme
-        const urlFormat = entryCompanyName.replace(/\s+/g, '-');
-        
+
+        const urlFormat = entryCompanyName.replace(/\\s+/g, '-');
+
         if (entryCompanyName === normalizedCompanyName || 
             urlFormat === normalizedCompanyName ||
-            entryCompanyName.includes(normalizedCompanyName) ||
+            entryCompanyName.includes(normalizedCompanyName) || 
             normalizedCompanyName.includes(entryCompanyName)) {
           entries.push({
             id: doc.id,
@@ -162,15 +162,15 @@ export const getEntries = async (companyName?: string) => {
           } as Entry);
         }
       });
-      
+
       return { success: true, entries };
     } else {
       q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
     }
-    
+
     const querySnapshot = await getDocs(q);
     const entries: Entry[] = [];
-    
+
     querySnapshot.forEach((doc) => {
       const data = doc.data();
       entries.push({
@@ -179,7 +179,7 @@ export const getEntries = async (companyName?: string) => {
         date: data.createdAt.toDate().toISOString().split('T')[0]
       } as Entry);
     });
-    
+
     return { success: true, entries };
   } catch (error: any) {
     return { success: false, error: error.message, entries: [] };
@@ -200,97 +200,97 @@ export const deleteEntry = async (entryId: string) => {
   try {
     const entryRef = doc(db, 'entries', entryId);
     await deleteDoc(entryRef);
-    
-    // Also delete all replies to this entry
+
     const repliesQuery = query(
       collection(db, 'replies'),
       where('entryId', '==', entryId)
     );
     const repliesSnapshot = await getDocs(repliesQuery);
-    
+
     const deletePromises = repliesSnapshot.docs.map(replyDoc => 
       deleteDoc(doc(db, 'replies', replyDoc.id))
     );
-    
+
     await Promise.all(deletePromises);
-    
-    // Also delete all votes for this entry
+
     const votesQuery = query(
       collection(db, 'votes'),
       where('entryId', '==', entryId)
     );
     const votesSnapshot = await getDocs(votesQuery);
-    
+
     const deleteVotesPromises = votesSnapshot.docs.map(voteDoc => 
       deleteDoc(doc(db, 'votes', voteDoc.id))
     );
-    
+
     await Promise.all(deleteVotesPromises);
-    
+
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 };
 
-// 🔧 FIX 2: Beğeni sistemi - Her kullanıcı sadece 1 kez oy verebilir
-export const voteEntry = async (entryId: string, isIncrement: boolean, userId: string) => {
+export const voteEntry = async (entryId: string, voteType: 'like' | 'dislike', userId: string) => {
   try {
     const voteId = `${userId}_${entryId}`;
     const voteRef = doc(db, 'votes', voteId);
     const entryRef = doc(db, 'entries', entryId);
-    
-    // Mevcut oyu kontrol et
+
     const voteDoc = await getDoc(voteRef);
-    
+
     if (voteDoc.exists()) {
       const existingVote = voteDoc.data();
-      const newVoteType = isIncrement ? 'up' : 'down';
-      
-      if (existingVote.type === newVoteType) {
+
+      if (existingVote.type === voteType) {
         // Aynı oy türü - oyu iptal et
         await deleteDoc(voteRef);
-        await updateDoc(entryRef, {
-          votes: increment(isIncrement ? -1 : 1)
-        });
+        if (voteType === 'like') {
+          await updateDoc(entryRef, { likes: increment(-1) });
+        } else {
+          await updateDoc(entryRef, { dislikes: increment(-1) });
+        }
       } else {
-        // Farklı oy türü - oyu değiştir
+        // Farklı oy türü - eski oyu güncellenmiyor, sadece yeni oy ekleniyor
         await updateDoc(voteRef, {
-          type: newVoteType,
+          type: voteType,
           createdAt: Timestamp.now()
         });
-        // Önceki oyu iptal et ve yeni oyu ekle (2 birim değişim)
-        await updateDoc(entryRef, {
-          votes: increment(isIncrement ? 2 : -2)
-        });
+
+        if (voteType === 'like') {
+          await updateDoc(entryRef, { likes: increment(1) });
+        } else {
+          await updateDoc(entryRef, { dislikes: increment(1) });
+        }
       }
     } else {
       // Yeni oy
       await setDoc(voteRef, {
         userId,
         entryId,
-        type: isIncrement ? 'up' : 'down',
+        type: voteType,
         createdAt: Timestamp.now()
       });
-      
-      await updateDoc(entryRef, {
-        votes: increment(isIncrement ? 1 : -1)
-      });
+
+      if (voteType === 'like') {
+        await updateDoc(entryRef, { likes: increment(1) });
+      } else {
+        await updateDoc(entryRef, { dislikes: increment(1) });
+      }
     }
-    
+
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 };
 
-// Kullanıcının entry'ye verdiği oyu getir
 export const getUserVote = async (entryId: string, userId: string) => {
   try {
     const voteId = `${userId}_${entryId}`;
     const voteRef = doc(db, 'votes', voteId);
     const voteDoc = await getDoc(voteRef);
-    
+
     if (voteDoc.exists()) {
       return { success: true, vote: voteDoc.data().type };
     } else {
@@ -301,13 +301,13 @@ export const getUserVote = async (entryId: string, userId: string) => {
   }
 };
 
-// 🔧 FIX 3: Yanıt sistemi düzeltildi
-export const addReply = async (entryId: string, reply: Omit<Reply, 'id' | 'votes' | 'createdAt'>) => {
+export const addReply = async (entryId: string, reply: Omit<Reply, 'id' | 'likes' | 'dislikes' | 'createdAt' | 'entryId'>) => {
   try {
     const docRef = await addDoc(collection(db, 'replies'), {
       ...reply,
       entryId,
-      votes: 0,
+      likes: 0,
+      dislikes: 0,
       createdAt: Timestamp.now()
     });
     return { success: true, id: docRef.id };
@@ -323,10 +323,10 @@ export const getReplies = async (entryId: string) => {
       where('entryId', '==', entryId),
       orderBy('createdAt', 'asc')
     );
-    
+
     const querySnapshot = await getDocs(q);
     const replies: Reply[] = [];
-    
+
     querySnapshot.forEach((doc) => {
       const data = doc.data();
       replies.push({
@@ -335,56 +335,53 @@ export const getReplies = async (entryId: string) => {
         date: data.createdAt.toDate().toISOString().split('T')[0]
       } as Reply);
     });
-    
+
     return { success: true, replies };
   } catch (error: any) {
     return { success: false, error: error.message, replies: [] };
   }
 };
 
-// Company Stats  
 export const getCompanyStats = async () => {
   try {
     const q = query(collection(db, 'entries'));
     const querySnapshot = await getDocs(q);
-    
+
     const companyCount: { [key: string]: number } = {};
-    
+
     querySnapshot.forEach((doc) => {
       const data = doc.data();
       const company = data.company;
       companyCount[company] = (companyCount[company] || 0) + 1;
     });
-    
+
     const stats: CompanyStats[] = Object.entries(companyCount)
       .map(([name, totalComplaints]) => ({ name, totalComplaints }))
       .sort((a, b) => b.totalComplaints - a.totalComplaints)
       .slice(0, 10);
-    
+
     return { success: true, stats };
   } catch (error: any) {
     return { success: false, error: error.message, stats: [] };
   }
 };
 
-// Real-time listeners - FIX 1 için güncellendi
 export const subscribeToEntries = (callback: (entries: Entry[]) => void, companyName?: string) => {
   if (companyName) {
-    // Firma sayfası için tüm entry'leri dinle ve client-side filter uygula
     const q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
-    
+
     return onSnapshot(q, (querySnapshot) => {
       const normalizedCompanyName = companyName.toLowerCase().trim();
       const entries: Entry[] = [];
-      
+
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         const entryCompanyName = data.company.toLowerCase().trim();
-        const urlFormat = entryCompanyName.replace(/\s+/g, '-');
-        
+        const urlFormat = entryCompanyName.replace(/\\s+/g, '-');
+
         if (entryCompanyName === normalizedCompanyName || 
             urlFormat === normalizedCompanyName ||
-            entryCompanyName.includes(normalizedCompanyName) ||
+            entryCompanyName.includes(normalizedCompanyName) || 
             normalizedCompanyName.includes(entryCompanyName)) {
           entries.push({
             id: doc.id,
@@ -393,14 +390,15 @@ export const subscribeToEntries = (callback: (entries: Entry[]) => void, company
           } as Entry);
         }
       });
-      
+
       callback(entries);
     });
   } else {
     const q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
-    
+
     return onSnapshot(q, (querySnapshot) => {
       const entries: Entry[] = [];
+
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         entries.push({
@@ -412,4 +410,26 @@ export const subscribeToEntries = (callback: (entries: Entry[]) => void, company
       callback(entries);
     });
   }
+};
+
+export const subscribeToReplies = (entryId: string, callback: (replies: Reply[]) => void) => {
+  const q = query(
+    collection(db, 'replies'),
+    where('entryId', '==', entryId),
+    orderBy('createdAt', 'asc')
+  );
+
+  return onSnapshot(q, (querySnapshot) => {
+    const replies: Reply[] = [];
+
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      replies.push({
+        id: doc.id,
+        ...data,
+        date: data.createdAt ? data.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+      } as Reply);
+    });
+    callback(replies);
+  });
 };

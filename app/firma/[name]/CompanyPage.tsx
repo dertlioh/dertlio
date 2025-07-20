@@ -17,7 +17,8 @@ import {
   subscribeToEntries,
   getUserVote,
   getReplies,
-  addReply
+  addReply,
+  subscribeToReplies
 } from '../../../lib/firebaseService';
 
 const companyInfo: { [key: string]: { name: string; description: string } } = {
@@ -52,9 +53,9 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [userVotes, setUserVotes] = useState<{ [key: string]: 'up' | 'down' | null }>({});
-  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>({});
-  
+  const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>(%);
+  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>( {});
+
   const [newEntry, setNewEntry] = useState({ title: '', content: '' });
   const [newReply, setNewReply] = useState('');
   const [authForm, setAuthForm] = useState({
@@ -62,18 +63,17 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
     email: '',
     password: ''
   });
-  
+
   const company = companyInfo[companyName] || {
     name: companyName.charAt(0).toUpperCase() + companyName.slice(1).replace(/-/g, ' '),
     description: `${companyName.charAt(0).toUpperCase() + companyName.slice(1).replace(/-/g, ' ')} hakkında şikayetler`
   };
 
-  // Load user votes
   const loadUserVotes = async (entriesData: Entry[]) => {
     if (!user) return;
-    
-    const votes: { [key: string]: 'up' | 'down' | null } = {};
-    
+
+    const votes: { [key: string]: 'like' | 'dislike' | null } = {};
+
     for (const entry of entriesData) {
       if (entry.id) {
         const voteResult = await getUserVote(entry.id, user.uid);
@@ -82,23 +82,26 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
         }
       }
     }
-    
+
     setUserVotes(votes);
   };
 
-  // Load replies
   const loadReplies = async (entriesData: Entry[]) => {
     const repliesData: { [key: string]: Reply[] } = {};
-    
+
     for (const entry of entriesData) {
       if (entry.id) {
         const repliesResult = await getReplies(entry.id);
         if (repliesResult.success) {
           repliesData[entry.id] = repliesResult.replies;
         }
+
+        subscribeToReplies(entry.id, (newReplies) => {
+          setEntriesWithReplies(prev => ({ ...prev, [entry.id!]: newReplies }));
+        });
       }
     }
-    
+
     setEntriesWithReplies(repliesData);
   };
 
@@ -107,14 +110,12 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
       try {
         setIsLoading(true);
         setError(null);
-        
-        // 🔧 FIX 1: Şirket adına göre entry'leri getir
+
         const result = await getEntries(company.name);
         if (result.success) {
           setEntries(result.entries);
           setFilteredEntries(result.entries);
-          
-          // Load user votes and replies
+
           await Promise.all([
             loadUserVotes(result.entries),
             loadReplies(result.entries)
@@ -133,13 +134,12 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
     loadEntries();
 
     let unsubscribe: (() => void) | null = null;
-    
+
     setTimeout(() => {
       unsubscribe = subscribeToEntries(async (newEntries) => {
         setEntries(newEntries);
         handleSearch(searchQuery, newEntries);
-        
-        // Reload user votes and replies
+
         await Promise.all([
           loadUserVotes(newEntries),
           loadReplies(newEntries)
@@ -164,12 +164,12 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
 
   const handleSearch = (query: string, entriesData?: Entry[]) => {
     const dataToFilter = entriesData || entries;
-    
+
     if (!query.trim()) {
       setFilteredEntries(dataToFilter);
       return;
     }
-    
+
     const filtered = dataToFilter.filter(entry => 
       entry.title.toLowerCase().includes(query.toLowerCase()) ||
       entry.content.toLowerCase().includes(query.toLowerCase())
@@ -177,24 +177,20 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
     setFilteredEntries(filtered);
   };
 
-  const handleVote = async (entryId: string, increment: boolean) => {
+  const handleVote = async (entryId: string, voteType: 'like' | 'dislike') => {
     if (!user) {
       setShowAuthModal(true);
       return;
     }
-    
-    const result = await voteEntry(entryId, increment, user.uid);
+
+    const result = await voteEntry(entryId, voteType, user.uid);
     if (result.success) {
-      // Update user vote state
       const currentVote = userVotes[entryId];
-      const newVoteType = increment ? 'up' : 'down';
-      
-      if (currentVote === newVoteType) {
-        // Cancel vote
+
+      if (currentVote === voteType) {
         setUserVotes(prev => ({ ...prev, [entryId]: null }));
       } else {
-        // Set new vote
-        setUserVotes(prev => ({ ...prev, [entryId]: newVoteType }));
+        setUserVotes(prev => ({ ...prev, [entryId]: voteType }));
       }
     }
   };
@@ -206,7 +202,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
       return;
     }
     if (!newEntry.title || !newEntry.content) return;
-    
+
     const result = await addEntry({
       company: company.name,
       title: newEntry.title,
@@ -225,10 +221,10 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
-    
+
     if (authMode === 'register') {
       if (!authForm.username || !authForm.email || !authForm.password) return;
-      
+
       const result = await registerUser(authForm.email, authForm.password, authForm.username);
       if (result.success) {
         setShowAuthModal(false);
@@ -239,7 +235,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
       }
     } else {
       if (!authForm.email || !authForm.password) return;
-      
+
       const result = await loginUser(authForm.email, authForm.password);
       if (result.success) {
         setShowAuthModal(false);
@@ -289,15 +285,6 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
       setNewReply('');
       setReplyingToEntry(null);
       setShowReplyModal(false);
-      
-      // Refresh replies for this entry
-      const repliesResult = await getReplies(replyingToEntry);
-      if (repliesResult.success) {
-        setEntriesWithReplies(prev => ({
-          ...prev,
-          [replyingToEntry]: repliesResult.replies
-        }));
-      }
     }
   };
 
@@ -349,7 +336,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
             <Link href="/" className="text-2xl font-bold text-red-600" style={{ fontFamily: 'Pacifico, serif' }}>
               dertlio
             </Link>
-            
+
             <div className="flex-1 max-w-md mx-2 sm:mx-8">
               <div className="relative">
                 <input
@@ -412,7 +399,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
               <div className="text-sm text-gray-500">Toplam Şikayet</div>
             </div>
           </div>
-          
+
           <div className="flex flex-wrap items-center gap-4">
             <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors cursor-pointer">
               <i className="ri-arrow-left-line"></i>
@@ -455,7 +442,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                 onClick={handleWriteClick}
                 className="bg-red-600 text-white px-6 py-2 rounded-full hover:bg-red-700 transition-colors cursor-pointer whitespace-nowrap"
               >
-                İlk Entry'i Yaz
+                İlk Entry'ı Yaz
               </button>
             </div>
           ) : filteredEntries.length === 0 && searchQuery ? (
@@ -476,35 +463,37 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                     <span className="text-gray-500 text-sm">{entry.date}</span>
                   </div>
                 </div>
-                
+
                 <h3 className="text-lg font-semibold text-gray-800 mb-3">{entry.title}</h3>
                 <p className="text-gray-700 leading-relaxed mb-4 break-words">{entry.content}</p>
-                
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
+
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-3">
                     <button 
-                      onClick={() => handleVote(entry.id!, true)}
-                      className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
-                        userVotes[entry.id!] === 'up' 
+                      onClick={() => handleVote(entry.id!, 'like')}
+                      className={`flex items-center gap-1 px-3 py-1 rounded-full transition-colors cursor-pointer ${ 
+                        userVotes[entry.id!] === 'like' 
                           ? 'bg-green-100 text-green-700' 
                           : 'hover:bg-green-100 text-green-600'
                       }`}
                     >
                       <i className="ri-thumb-up-line"></i>
+                      <span className="text-sm font-medium">{entry.likes || 0}</span>
                     </button>
-                    <span className="text-sm font-medium text-gray-700">{entry.votes}</span>
+
                     <button 
-                      onClick={() => handleVote(entry.id!, false)}
-                      className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
-                        userVotes[entry.id!] === 'down' 
+                      onClick={() => handleVote(entry.id!, 'dislike')}
+                      className={`flex items-center gap-1 px-3 py-1 rounded-full transition-colors cursor-pointer ${ 
+                        userVotes[entry.id!] === 'dislike' 
                           ? 'bg-red-100 text-red-700' 
                           : 'hover:bg-red-100 text-red-600'
                       }`}
                     >
                       <i className="ri-thumb-down-line"></i>
+                      <span className="text-sm font-medium">{entry.dislikes || 0}</span>
                     </button>
                   </div>
-                  
+
                   <button 
                     onClick={() => handleReply(entry.id!)}
                     className="flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors cursor-pointer"
@@ -517,7 +506,6 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                   </button>
                 </div>
 
-                {/* Replies Section */}
                 {entriesWithReplies[entry.id!] && entriesWithReplies[entry.id!].length > 0 && (
                   <div className="mt-4 pt-4 border-t border-gray-100">
                     <div className="space-y-3">
@@ -558,13 +546,13 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                 <i className="ri-close-line text-gray-500"></i>
               </button>
             </div>
-            
+
             {authError && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-sm text-red-700">{authError}</p>
               </div>
             )}
-            
+
             <form onSubmit={handleAuth} className="space-y-4">
               {authMode === 'register' && (
                 <div>
@@ -578,7 +566,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                   />
                 </div>
               )}
-              
+
               <div>
                 <input
                   type="email"
@@ -589,7 +577,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                   required
                 />
               </div>
-              
+
               <div>
                 <input
                   type="password"
@@ -600,7 +588,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                   required
                 />
               </div>
-              
+
               <button
                 type="submit"
                 className="w-full bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 transition-colors font-medium cursor-pointer whitespace-nowrap"
@@ -608,7 +596,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                 {authMode === 'login' ? 'Giriş Yap' : 'Hesap Oluştur'}
               </button>
             </form>
-            
+
             <div className="mt-4 text-center">
               <button
                 onClick={() => {
@@ -640,7 +628,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                 <i className="ri-close-line text-gray-500"></i>
               </button>
             </div>
-            
+
             <form onSubmit={handleSubmitEntry} className="space-y-4">
               <div>
                 <input
@@ -652,7 +640,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                   required
                 />
               </div>
-              
+
               <div>
                 <textarea
                   placeholder="Yaşadığın sorunu detaylı anlat..."
@@ -667,7 +655,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                   {newEntry.content.length}/500
                 </div>
               </div>
-              
+
               <button
                 type="submit"
                 className="w-full bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 transition-colors font-medium cursor-pointer whitespace-nowrap"

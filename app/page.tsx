@@ -81,16 +81,12 @@ export default function Home() {
           if (repliesResult.success) {
             repliesData[entry.id] = repliesResult.replies;
 
-            const unsubscribe = subscribeToReplies(entry.id, (newReplies) => {
+            subscribeToReplies(entry.id, (newReplies) => {
               setEntriesWithReplies(prev => ({ 
                 ...prev,
                 [entry.id!]: newReplies
               }));
             });
-
-            if (unsubscribe) {
-              // Could store these for cleanup if needed
-            }
           }
         } catch (error) {
           console.warn(`Error loading replies for entry ${entry.id}:`, error);
@@ -158,7 +154,7 @@ export default function Home() {
         unsubscribe();
       }
     };
-  }, [user]);
+  }, [user, searchQuery]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -415,7 +411,7 @@ export default function Home() {
                 {companyStats.slice(0, 8).map((company, index) => (
                   <Link 
                     key={company.name}
-                    href={`/firma/${company.name.toLowerCase().replace(/\\s+/g, '-')}`}
+                    href={`/firma/${company.name.toLowerCase().replace(/\s+/g, '-')}`}
                     className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
@@ -474,7 +470,7 @@ export default function Home() {
                     <div className="flex flex-wrap items-start justify-between mb-3 gap-2">
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         <Link 
-                          href={`/firma/${entry.company.toLowerCase().replace(/\\s+/g, '-')}`}
+                          href={`/firma/${entry.company.toLowerCase().replace(/\s+/g, '-')}`}
                           className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-medium hover:bg-red-200 transition-colors cursor-pointer"
                         >
                           {entry.company}

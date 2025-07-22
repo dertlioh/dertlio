@@ -48,11 +48,9 @@ const companyInfo: { [key: string]: { name: string; description: string } } = {
   }
 };
 
-// URL karakterlerini düzgün formatlama fonksiyonu - GELİŞMİŞ VERSİYON
 const formatCompanyName = (urlName: string): string => {
   if (!urlName) return 'Firma';
   
-  // URL decode işlemi
   let decoded = urlName;
   try {
     decoded = decodeURIComponent(urlName);
@@ -60,27 +58,19 @@ const formatCompanyName = (urlName: string): string => {
     // Decode hatası varsa orijinal kullan
   }
   
-  // Bilinen firma formatları - GENİŞLETİLMİŞ
   const companyMappings: { [key: string]: string } = {
-    // LC Waikiki varyasyonları
     'lc%20waikiki': 'LC Waikiki',
     'lc-waikiki': 'LC Waikiki', 
     'lc waikiki': 'LC Waikiki',
     'lcw': 'LC Waikiki',
-    
-    // Telekom varyasyonları
     'turk-telekom': 'Türk Telekom',
     'türk-telekom': 'Türk Telekom',
     'turk%20telekom': 'Türk Telekom',
     'türk%20telekom': 'Türk Telekom',
-    
-    // Aycra varyasyonları
     'aycra%20ajans': 'Aycra Ajans',
     'aycra-ajans': 'Aycra Ajans',
     'aycra ajans': 'Aycra Ajans',
     'aycra': 'Aycra',
-    
-    // Diğer yaygın firmalar
     'migros': 'Migros',
     'bim': 'BİM',
     'a101': 'A101',
@@ -97,7 +87,6 @@ const formatCompanyName = (urlName: string): string => {
     'turkcell': 'Turkcell'
   };
 
-  // Direkt eşleştirme kontrolü
   const lowerUrl = urlName.toLowerCase();
   const lowerDecoded = decoded.toLowerCase();
   
@@ -109,31 +98,26 @@ const formatCompanyName = (urlName: string): string => {
     return companyMappings[lowerDecoded];
   }
 
-  // Genel formatlama kuralları
   let formatted = decoded
-    .replace(/-/g, ' ')           // Tireleri boşluğa çevir
-    .replace(/\\+/g, ' ')          // Plus işaretlerini boşluğa çevir
-    .replace(/_/g, ' ')           // Alt çizgileri boşluğa çevir
-    .replace(/\\s+/g, ' ')         // Çoklu boşlukları tek boşluğa çevir
-    .trim();                      // Baş/son boşlukları temizle
+    .replace(/-/g, ' ')
+    .replace(/\+/g, ' ')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
-  // Her kelimenin ilk harfini büyük yap
   formatted = formatted
     .split(' ')
     .map(word => {
       if (word.length === 0) return word;
       
-      // Kısaltmalar büyük harfle kalır
       if (word.length <= 3 && word.toUpperCase() === word) {
         return word.toUpperCase();
       }
       
-      // Türkçe karakter desteği ile capitalize
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     })
     .join(' ');
 
-  // Boş veya çok kısa isimler için fallback
   if (!formatted || formatted.length < 2) {
     return 'Firma';
   }
@@ -154,8 +138,8 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>( {});
-  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>( {});
+  const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>({});
+  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>({});
 
   const [newEntry, setNewEntry] = useState({ title: '', content: '' });
   const [newReply, setNewReply] = useState('');
@@ -165,7 +149,6 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
     password: ''
   });
 
-  // Formatlı firma adını al
   const formattedCompanyName = formatCompanyName(companyName);
   
   const company = companyInfo[companyName.toLowerCase()] || {
@@ -256,7 +239,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
         unsubscribe();
       }
     };
-  }, [companyName, company.name, user]);
+  }, [companyName, company.name, user, searchQuery]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -622,8 +605,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                           </div>
                           <p className="text-sm text-gray-700">{reply.content}</p>
                         </div>
-                      ))
-                      }
+                      ))}
                     </div>
                   </div>
                 )}
@@ -774,7 +756,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
 
       {/* Reply Modal */}
       {showReplyModal && (
-        <div className="fixed inset-0 bg-black bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Yanıt Yaz</h2>

@@ -76,16 +76,25 @@ export default function Home() {
 
     for (const entry of entriesData) {
       if (entry.id) {
-        const repliesResult = await getReplies(entry.id);
-        if (repliesResult.success) {
-          repliesData[entry.id] = repliesResult.replies;
+        try {
+          const repliesResult = await getReplies(entry.id);
+          if (repliesResult.success) {
+            repliesData[entry.id] = repliesResult.replies;
 
-          subscribeToReplies(entry.id, (newReplies) => {
-            setEntriesWithReplies(prev => ({ 
-              ...prev,
-              [entry.id!]: newReplies
-            }));
-          });
+            const unsubscribe = subscribeToReplies(entry.id, (newReplies) => {
+              setEntriesWithReplies(prev => ({ 
+                ...prev,
+                [entry.id!]: newReplies
+              }));
+            });
+
+            if (unsubscribe) {
+              // Could store these for cleanup if needed
+            }
+          }
+        } catch (error) {
+          console.warn(`Error loading replies for entry ${entry.id}:`, error);
+          repliesData[entry.id] = [];
         }
       }
     }

@@ -61,6 +61,86 @@ export interface Vote {
   createdAt: Timestamp;
 }
 
+// Firma adı normalizasyon fonksiyonu - GELİŞMİŞ VERSİYON
+const normalizeCompanyName = (name: string): string[] => {
+  if (!name) return [];
+
+  let processedName = name.toLowerCase().trim();
+
+  // URL decode işlemi
+  try {
+    processedName = decodeURIComponent(processedName);
+  } catch (e) {
+    // Decode hatası varsa orijinal adı kullan
+  }
+
+  // Tüm varyasyonları topla
+  const variations = new Set<string>();
+
+  // Orijinal hali
+  variations.add(processedName);
+
+  // Boşluk/tire dönüşümleri
+  variations.add(processedName.replace(/\s+/g, '-'));
+  variations.add(processedName.replace(/-/g, ' '));
+  variations.add(processedName.replace(/\+/g, ' '));
+  variations.add(processedName.replace(/_/g, ' '));
+
+  // URL encoded halleri
+  variations.add(processedName.replace(/\s+/g, '%20'));
+
+  // Özel karakterler temizlenmiş hali
+  const cleanName = processedName.replace(/[^\\w\\s-]/g, '').replace(/\s+/g, ' ').trim();
+  if (cleanName !== processedName) {
+    variations.add(cleanName);
+    variations.add(cleanName.replace(/\s+/g, '-'));
+  }
+
+  // Kelime kısaltmaları ve yaygın formatlar
+  const wordMappings: { [key: string]: string[] } = {
+    'aycra': ['aycra', 'aycra ajans', 'aycra-ajans'],
+    'ajans': ['ajans', 'agency'],
+    'lc': ['lc', 'lc waikiki', 'lcw'],
+    'waikiki': ['waikiki', 'lc waikiki', 'lcw'],
+    'telekom': ['telekom', 'telecom'],
+    'türk': ['türk', 'turk'],
+    'bank': ['bank', 'banka', 'bankası'],
+    'sigorta': ['sigorta', 'insurance'],
+    'grup': ['grup', 'group'],
+    'holding': ['holding', 'hldg']
+  };
+
+  // Kelime bazında eşleştirmeler
+  const words = processedName.split(/[\s\-_]+/);
+  words.forEach(word => {
+    if (wordMappings[word]) {
+      wordMappings[word].forEach(mapping => {
+        variations.add(processedName.replace(word, mapping));
+      });
+    }
+  });
+
+  // Yaygın firma formatları
+  const commonFormats = [
+    processedName + ' ltd',
+    processedName + ' şti',
+    processedName + ' a.ş',
+    processedName + ' inc',
+    processedName.replace(/\s+(ltd|şti|a\.ş|inc|corp|co)$/i, ''),
+    processedName.replace(/^(the\s+)/i, '')
+  ];
+
+  commonFormats.forEach(format => {
+    if (format !== processedName) {
+      variations.add(format);
+      variations.add(format.replace(/\s+/g, '-'));
+    }
+  });
+
+  // Benzersiz varyasyonlar döndür
+  return Array.from(variations).filter(v => v.length > 0);
+};
+
 // Authentication
 export const registerUser = async (email: string, password: string, displayName: string) => {
   try {
@@ -136,25 +216,25 @@ export const addEntry = async (entry: Omit<Entry, 'id' | 'likes' | 'dislikes' | 
 
 export const getEntries = async (companyName?: string) => {
   try {
-    let q;
+    let q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+
     if (companyName) {
-      const normalizedCompanyName = companyName.toLowerCase().trim();
-
-      q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
-
-      const querySnapshot = await getDocs(q);
+      const companyVariations = normalizeCompanyName(companyName);
       const entries: Entry[] = [];
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        const entryCompanyName = data.company.toLowerCase().trim();
+        const entryCompanyVariations = normalizeCompanyName(data.company);
 
-        const urlFormat = entryCompanyName.replace(/\\s+/g, '-');
+        // Herhangi bir varyasyon eşleşiyor mu kontrol et
+        const isMatch = companyVariations.some(variation => 
+          entryCompanyVariations.some(entryVariation => 
+            entryVariation.includes(variation) || variation.includes(entryVariation)
+          )
+        );
 
-        if (entryCompanyName === normalizedCompanyName || 
-            urlFormat === normalizedCompanyName ||
-            entryCompanyName.includes(normalizedCompanyName) || 
-            normalizedCompanyName.includes(entryCompanyName)) {
+        if (isMatch) {
           entries.push({
             id: doc.id,
             ...data,
@@ -165,22 +245,19 @@ export const getEntries = async (companyName?: string) => {
 
       return { success: true, entries };
     } else {
-      q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
+      const entries: Entry[] = [];
+
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        entries.push({
+          id: doc.id,
+          ...data,
+          date: data.createdAt.toDate().toISOString().split('T')[0]
+        } as Entry);
+      });
+
+      return { success: true, entries };
     }
-
-    const querySnapshot = await getDocs(q);
-    const entries: Entry[] = [];
-
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      entries.push({
-        id: doc.id,
-        ...data,
-        date: data.createdAt.toDate().toISOString().split('T')[0]
-      } as Entry);
-    });
-
-    return { success: true, entries };
   } catch (error: any) {
     return { success: false, error: error.message, entries: [] };
   }
@@ -338,7 +415,34 @@ export const getReplies = async (entryId: string) => {
 
     return { success: true, replies };
   } catch (error: any) {
-    return { success: false, error: error.message, replies: [] };
+    console.warn('Index error for replies, falling back to simple query:', error);
+
+    // Fallback: Get all replies for this entry without ordering
+    try {
+      const fallbackQuery = query(
+        collection(db, 'replies'),
+        where('entryId', '==', entryId)
+      );
+
+      const fallbackSnapshot = await getDocs(fallbackQuery);
+      const replies: Reply[] = [];
+
+      fallbackSnapshot.forEach((doc) => {
+        const data = doc.data();
+        replies.push({
+          id: doc.id,
+          ...data,
+          date: data.createdAt ? data.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+        } as Reply);
+      });
+
+      // Sort manually by date
+      replies.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      return { success: true, replies };
+    } catch (fallbackError: any) {
+      return { success: false, error: fallbackError.message, replies: [] };
+    }
   }
 };
 
@@ -367,22 +471,24 @@ export const getCompanyStats = async () => {
 };
 
 export const subscribeToEntries = (callback: (entries: Entry[]) => void, companyName?: string) => {
-  if (companyName) {
-    const q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
+  const q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
 
-    return onSnapshot(q, (querySnapshot) => {
-      const normalizedCompanyName = companyName.toLowerCase().trim();
+  return onSnapshot(q, (querySnapshot) => {
+    if (companyName) {
+      const companyVariations = normalizeCompanyName(companyName);
       const entries: Entry[] = [];
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        const entryCompanyName = data.company.toLowerCase().trim();
-        const urlFormat = entryCompanyName.replace(/\\s+/g, '-');
+        const entryCompanyVariations = normalizeCompanyName(data.company);
 
-        if (entryCompanyName === normalizedCompanyName || 
-            urlFormat === normalizedCompanyName ||
-            entryCompanyName.includes(normalizedCompanyName) || 
-            normalizedCompanyName.includes(entryCompanyName)) {
+        const isMatch = companyVariations.some(variation => 
+          entryCompanyVariations.some(entryVariation => 
+            entryVariation.includes(variation) || variation.includes(entryVariation)
+          )
+        );
+
+        if (isMatch) {
           entries.push({
             id: doc.id,
             ...data,
@@ -392,11 +498,7 @@ export const subscribeToEntries = (callback: (entries: Entry[]) => void, company
       });
 
       callback(entries);
-    });
-  } else {
-    const q = query(collection(db, 'entries'), orderBy('createdAt', 'desc'));
-
-    return onSnapshot(q, (querySnapshot) => {
+    } else {
       const entries: Entry[] = [];
 
       querySnapshot.forEach((doc) => {
@@ -408,28 +510,80 @@ export const subscribeToEntries = (callback: (entries: Entry[]) => void, company
         } as Entry);
       });
       callback(entries);
-    });
-  }
+    }
+  });
 };
 
 export const subscribeToReplies = (entryId: string, callback: (replies: Reply[]) => void) => {
-  const q = query(
-    collection(db, 'replies'),
-    where('entryId', '==', entryId),
-    orderBy('createdAt', 'asc')
-  );
+  try {
+    // Try with orderBy first
+    const q = query(
+      collection(db, 'replies'),
+      where('entryId', '==', entryId),
+      orderBy('createdAt', 'asc')
+    );
 
-  return onSnapshot(q, (querySnapshot) => {
-    const replies: Reply[] = [];
+    return onSnapshot(q, (querySnapshot) => {
+      const replies: Reply[] = [];
 
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      replies.push({
-        id: doc.id,
-        ...data,
-        date: data.createdAt ? data.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
-      } as Reply);
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        replies.push({
+          id: doc.id,
+          ...data,
+          date: data.createdAt ? data.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+        } as Reply);
+      });
+      callback(replies);
+    }, (error) => {
+      console.warn('Index error for replies subscription, using fallback:', error);
+
+      // Fallback: Subscribe without ordering
+      const fallbackQuery = query(
+        collection(db, 'replies'),
+        where('entryId', '==', entryId)
+      );
+
+      return onSnapshot(fallbackQuery, (querySnapshot) => {
+        const replies: Reply[] = [];
+
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          replies.push({
+            id: doc.id,
+            ...data,
+            date: data.createdAt ? data.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+          } as Reply);
+        });
+
+        // Sort manually by date
+        replies.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        callback(replies);
+      });
     });
-    callback(replies);
-  });
+  } catch (error: any) {
+    console.warn('Error setting up replies subscription:', error);
+    // Return fallback subscription without ordering
+    const fallbackQuery = query(
+      collection(db, 'replies'),
+      where('entryId', '==', entryId)
+    );
+
+    return onSnapshot(fallbackQuery, (querySnapshot) => {
+      const replies: Reply[] = [];
+
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        replies.push({
+          id: doc.id,
+          ...data,
+          date: data.createdAt ? data.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+        } as Reply);
+      });
+
+      // Sort manually by date
+      replies.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      callback(replies);
+    });
+  }
 };

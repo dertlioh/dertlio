@@ -15,6 +15,8 @@ export async function generateStaticParams() {
     { name: 'türk-telekom' },
     { name: 'mango' },
     { name: 'lcw' },
+    { name: 'lc-waikiki' },
+    { name: 'lc%20waikiki' },
     { name: 'defacto' },
     { name: 'koton' },
     { name: 'trendyol' },
@@ -52,12 +54,30 @@ export async function generateStaticParams() {
     { name: 'pizza-hut' },
     { name: 'starbucks' },
     { name: 'gloria-jeans' },
-    { name: 'tchibo' }
+    { name: 'tchibo' },
+    // URL-encoded versions for all companies with spaces
+    { name: 'türk%20telekom' },
+    { name: 'turk%20telekom' },
+    { name: 'burger%20king' },
+    { name: 'pizza%20hut' },
+    { name: 'gloria%20jeans' },
+    { name: 'yemek%20sepeti' },
+    { name: 'media%20markt' },
+    { name: 'h%26m' },
+    // Alternative encodings
+    { name: 'lc+waikiki' },
+    { name: 'türk+telekom' },
+    { name: 'burger+king' },
+    { name: 'pizza+hut' },
+    { name: 'gloria+jeans' },
+    // Common typos and variations
+    { name: 'waikiki' },
+    { name: 'lcwaikiki' },
+    { name: 'lc_waikiki' },
+    { name: 'turktelekom' },
+    { name: 'turk-telekom' }
   ];
 }
-
-// 🔧 FIX: Dinamik sayfa oluşturma - herhangi bir firma için çalışacak
-export const dynamicParams = true; // Bu satır çok önemli!
 
 export default function CompanyPageRoute({ params }: { params: { name: string } }) {
   return <CompanyPage companyName={params.name} />;

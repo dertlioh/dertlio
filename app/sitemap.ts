@@ -1,3 +1,4 @@
+
 import { MetadataRoute } from 'next'
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -27,10 +28,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     'migros',
     'getir',
     'teknosa',
-    'h&m',
+    'hm',
     'carrefoursa',
     'yemeksepeti',
-    'türk-telekom',
+    'turk-telekom',
     'mango',
     'lcw',
     'lc-waikiki',
@@ -47,12 +48,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     'yandex',
     'bim',
     'a101',
-    'şok',
+    'sok',
     'carrefour',
     'real',
     'macro',
     'bauhaus',
-    'koçtaş',
+    'koctas',
     'ikea',
     'mediamarkt',
     'vatan',

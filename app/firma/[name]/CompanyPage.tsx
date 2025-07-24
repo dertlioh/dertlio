@@ -50,14 +50,14 @@ const companyInfo: { [key: string]: { name: string; description: string } } = {
 
 const formatCompanyName = (urlName: string): string => {
   if (!urlName) return 'Firma';
-  
+
   let decoded = urlName;
   try {
     decoded = decodeURIComponent(urlName);
   } catch (e) {
     // Decode hatası varsa orijinal kullan
   }
-  
+
   const companyMappings: { [key: string]: string } = {
     'lc%20waikiki': 'LC Waikiki',
     'lc-waikiki': 'LC Waikiki', 
@@ -89,11 +89,11 @@ const formatCompanyName = (urlName: string): string => {
 
   const lowerUrl = urlName.toLowerCase();
   const lowerDecoded = decoded.toLowerCase();
-  
+
   if (companyMappings[lowerUrl]) {
     return companyMappings[lowerUrl];
   }
-  
+
   if (companyMappings[lowerDecoded]) {
     return companyMappings[lowerDecoded];
   }
@@ -109,11 +109,11 @@ const formatCompanyName = (urlName: string): string => {
     .split(' ')
     .map(word => {
       if (word.length === 0) return word;
-      
+
       if (word.length <= 3 && word.toUpperCase() === word) {
         return word.toUpperCase();
       }
-      
+
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     })
     .join(' ');
@@ -139,7 +139,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>({});
-  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>({});
+  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>( {});
 
   const [newEntry, setNewEntry] = useState({ title: '', content: '' });
   const [newReply, setNewReply] = useState('');
@@ -150,7 +150,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
   });
 
   const formattedCompanyName = formatCompanyName(companyName);
-  
+
   const company = companyInfo[companyName.toLowerCase()] || {
     name: formattedCompanyName,
     description: `${formattedCompanyName} hakkında şikayetler`
@@ -421,7 +421,11 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
         <div className="px-4 py-4">
           <div className="flex items-center justify-between max-w-7xl mx-auto">
             <Link href="/" className="text-2xl font-bold text-red-600" style={{ fontFamily: 'Pacifico, serif' }}>
-              dertlio
+              <img 
+                src="https://static.readdy.ai/image/7787a2ce36fec40941bbbef8cf7f1725/91fea210aebe086edefc8a9b37eab84b.png" 
+                alt="Dertlio Logo" 
+                className="h-8 w-auto"
+              />
             </Link>
 
             <div className="flex-1 max-w-md mx-2 sm:mx-8">

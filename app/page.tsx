@@ -341,8 +341,12 @@ export default function Home() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="px-4 py-4">
           <div className="flex items-center justify-between max-w-7xl mx-auto">
-            <Link href="/" className="text-2xl font-bold text-red-600" style={{ fontFamily: 'Pacifico, serif' }}>
-              dertlio
+            <Link href="/" className="flex items-center gap-2">
+              <img 
+                src="https://static.readdy.ai/image/7787a2ce36fec40941bbbef8cf7f1725/91fea210aebe086edefc8a9b37eab84b.png" 
+                alt="Dertlio Logo" 
+                className="h-8 w-auto"
+              />
             </Link>
 
             <div className="flex-1 max-w-md mx-2 sm:mx-8">
@@ -411,7 +415,7 @@ export default function Home() {
                 {companyStats.slice(0, 8).map((company, index) => (
                   <Link 
                     key={company.name}
-                    href={`/firma/${company.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    href={`/firma/${company.name.toLowerCase().replace(/\\s+/g, '-')}`}
                     className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
@@ -470,7 +474,7 @@ export default function Home() {
                     <div className="flex flex-wrap items-start justify-between mb-3 gap-2">
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         <Link 
-                          href={`/firma/${entry.company.toLowerCase().replace(/\s+/g, '-')}`}
+                          href={`/firma/${entry.company.toLowerCase().replace(/\\s+/g, '-')}`}
                           className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-medium hover:bg-red-200 transition-colors cursor-pointer"
                         >
                           {entry.company}
@@ -627,8 +631,7 @@ export default function Home() {
               >
                 {authMode === 'login' 
                   ? 'Hesabın yok mu? Hesap oluştur' 
-                  : 'Zaten hesabın var mı? Giriş yap'
-                }
+                  : 'Zaten hesabın var mı? Giriş yap'}
               </button>
             </div>
           </div>

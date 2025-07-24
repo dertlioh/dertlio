@@ -61,6 +61,15 @@ export interface Vote {
   createdAt: Timestamp;
 }
 
+export interface UserProfile {
+  id?: string;
+  uid: string;
+  displayName: string;
+  email: string;
+  createdAt: Timestamp;
+  lastLogin?: Timestamp;
+}
+
 // Firma adı normalizasyon fonksiyonu - GELİŞMİŞ VERSİYON
 const normalizeCompanyName = (name: string): string[] => {
   if (!name) return [];
@@ -90,28 +99,14 @@ const normalizeCompanyName = (name: string): string[] => {
   variations.add(processedName.replace(/\s+/g, '%20'));
 
   // Özel karakterler temizlenmiş hali
-  const cleanName = processedName.replace(/[^\\w\\s-]/g, '').replace(/\s+/g, ' ').trim();
+  const cleanName = processedName.replace(/[^\\w\\s-]/g, '').replace(/\\s+/g, ' ').trim();
   if (cleanName !== processedName) {
     variations.add(cleanName);
-    variations.add(cleanName.replace(/\s+/g, '-'));
+    variations.add(cleanName.replace(/\\s+/g, '-'));
   }
 
-  // Kelime kısaltmaları ve yaygın formatlar
-  const wordMappings: { [key: string]: string[] } = {
-    'aycra': ['aycra', 'aycra ajans', 'aycra-ajans'],
-    'ajans': ['ajans', 'agency'],
-    'lc': ['lc', 'lc waikiki', 'lcw'],
-    'waikiki': ['waikiki', 'lc waikiki', 'lcw'],
-    'telekom': ['telekom', 'telecom'],
-    'türk': ['türk', 'turk'],
-    'bank': ['bank', 'banka', 'bankası'],
-    'sigorta': ['sigorta', 'insurance'],
-    'grup': ['grup', 'group'],
-    'holding': ['holding', 'hldg']
-  };
-
   // Kelime bazında eşleştirmeler
-  const words = processedName.split(/[\s\-_]+/);
+  const words = processedName.split(/[\\s\\-_]+/);
   words.forEach(word => {
     if (wordMappings[word]) {
       wordMappings[word].forEach(mapping => {
@@ -126,14 +121,14 @@ const normalizeCompanyName = (name: string): string[] => {
     processedName + ' şti',
     processedName + ' a.ş',
     processedName + ' inc',
-    processedName.replace(/\s+(ltd|şti|a\.ş|inc|corp|co)$/i, ''),
-    processedName.replace(/^(the\s+)/i, '')
+    processedName.replace(/\\s+(ltd|şti|a\\.ş|inc|corp|co)$/i, ''),
+    processedName.replace(/^(the\\s+)/i, '')
   ];
 
   commonFormats.forEach(format => {
     if (format !== processedName) {
       variations.add(format);
-      variations.add(format.replace(/\s+/g, '-'));
+      variations.add(format.replace(/\\s+/g, '-'));
     }
   });
 
@@ -152,7 +147,8 @@ export const registerUser = async (email: string, password: string, displayName:
       uid: user.uid,
       displayName,
       email,
-      createdAt: Timestamp.now()
+      createdAt: Timestamp.now(),
+      lastLogin: Timestamp.now()
     });
 
     return { success: true, user };
@@ -174,6 +170,18 @@ export const registerUser = async (email: string, password: string, displayName:
 export const loginUser = async (email: string, password: string) => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
+
+    // Update last login time
+    const q = query(collection(db, 'users'), where('uid', '==', userCredential.user.uid));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const userDoc = querySnapshot.docs[0];
+      await updateDoc(doc(db, 'users', userDoc.id), {
+        lastLogin: Timestamp.now()
+      });
+    }
+
     return { success: true, user: userCredential.user };
   } catch (error: any) {
     let errorMessage = 'Giriş başarısız';
@@ -586,4 +594,112 @@ export const subscribeToReplies = (entryId: string, callback: (replies: Reply[])
       callback(replies);
     });
   }
+};
+
+// Get all users (admin only)
+export const getUsers = async () => {
+  try {
+    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+
+    const users: UserProfile[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      users.push({
+        id: doc.id,
+        uid: data.uid,
+        displayName: data.displayName,
+        email: data.email,
+        createdAt: data.createdAt,
+        lastLogin: data.lastLogin
+      });
+    });
+
+    return { success: true, users };
+  } catch (error: any) {
+    return { success: false, error: error.message, users: [] };
+  }
+};
+
+// Update reply
+export const updateReply = async (replyId: string, updates: Partial<Reply>) => {
+  try {
+    const replyRef = doc(db, 'replies', replyId);
+    await updateDoc(replyRef, updates);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Delete reply
+export const deleteReply = async (replyId: string) => {
+  try {
+    const replyRef = doc(db, 'replies', replyId);
+    await deleteDoc(replyRef);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Get all replies (admin only)
+export const getAllReplies = async () => {
+  try {
+    const q = query(collection(db, 'replies'), orderBy('createdAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+
+    const replies: Reply[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      replies.push({
+        id: doc.id,
+        ...data,
+        date: data.createdAt ? data.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+      } as Reply);
+    });
+
+    return { success: true, replies };
+  } catch (error: any) {
+    return { success: false, error: error.message, replies: [] };
+  }
+};
+
+// Subscribe to users (admin only)
+export const subscribeToUsers = (callback: (users: UserProfile[]) => void) => {
+  const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+
+  return onSnapshot(q, (querySnapshot) => {
+    const users: UserProfile[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      users.push({
+        id: doc.id,
+        uid: data.uid,
+        displayName: data.displayName,
+        email: data.email,
+        createdAt: data.createdAt,
+        lastLogin: data.lastLogin
+      });
+    });
+    callback(users);
+  });
+};
+
+// Subscribe to all replies (admin only)
+export const subscribeToAllReplies = (callback: (replies: Reply[]) => void) => {
+  const q = query(collection(db, 'replies'), orderBy('createdAt', 'desc'));
+
+  return onSnapshot(q, (querySnapshot) => {
+    const replies: Reply[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      replies.push({
+        id: doc.id,
+        ...data,
+        date: data.createdAt ? data.createdAt.toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+      } as Reply);
+    });
+    callback(replies);
+  });
 };

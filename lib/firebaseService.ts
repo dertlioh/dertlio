@@ -70,6 +70,38 @@ export interface UserProfile {
   lastLogin?: Timestamp;
 }
 
+// Word mappings for company name variations
+const wordMappings: { [key: string]: string[] } = {
+  'bank': ['banka', 'bankası'],
+  'banka': ['bank', 'bankası'],
+  'bankası': ['bank', 'banka'],
+  'teknoloji': ['tech', 'technology'],
+  'tech': ['teknoloji', 'technology'],
+  'technology': ['teknoloji', 'tech'],
+  'sigorta': ['insurance', 'assurance'],
+  'insurance': ['sigorta', 'assurance'],
+  'telecom': ['telekom', 'telecommunication'],
+  'telekom': ['telecom', 'telecommunication'],
+  'market': ['mağaza', 'store'],
+  'mağaza': ['market', 'store'],
+  'store': ['market', 'mağaza'],
+  'online': ['çevrimiçi', 'internet'],
+  'çevrimiçi': ['online', 'internet'],
+  'internet': ['online', 'çevrimiçi'],
+  'global': ['küresel', 'international'],
+  'küresel': ['global', 'international'],
+  'international': ['global', 'küresel'],
+  'express': ['ekspres', 'hızlı'],
+  'ekspres': ['express', 'hızlı'],
+  'hızlı': ['express', 'ekspres'],
+  'mobile': ['mobil', 'cep'],
+  'mobil': ['mobile', 'cep'],
+  'cep': ['mobile', 'mobil'],
+  'digital': ['dijital', 'sayısal'],
+  'dijital': ['digital', 'sayısal'],
+  'sayısal': ['digital', 'dijital']
+};
+
 // Firma adı normalizasyon fonksiyonu - GELİŞMİŞ VERSİYON
 const normalizeCompanyName = (name: string): string[] => {
   if (!name) return [];
@@ -99,10 +131,10 @@ const normalizeCompanyName = (name: string): string[] => {
   variations.add(processedName.replace(/\s+/g, '%20'));
 
   // Özel karakterler temizlenmiş hali
-  const cleanName = processedName.replace(/[^\\w\\s-]/g, '').replace(/\\s+/g, ' ').trim();
+  const cleanName = processedName.replace(/[^\\w\\s-]/g, '').replace(/\s+/g, ' ').trim();
   if (cleanName !== processedName) {
     variations.add(cleanName);
-    variations.add(cleanName.replace(/\\s+/g, '-'));
+    variations.add(cleanName.replace(/\s+/g, '-'));
   }
 
   // Kelime bazında eşleştirmeler
@@ -121,14 +153,14 @@ const normalizeCompanyName = (name: string): string[] => {
     processedName + ' şti',
     processedName + ' a.ş',
     processedName + ' inc',
-    processedName.replace(/\\s+(ltd|şti|a\\.ş|inc|corp|co)$/i, ''),
+    processedName.replace(/\s+(ltd|şti|a\\.ş|inc|corp|co)$/i, ''),
     processedName.replace(/^(the\\s+)/i, '')
   ];
 
   commonFormats.forEach(format => {
     if (format !== processedName) {
       variations.add(format);
-      variations.add(format.replace(/\\s+/g, '-'));
+      variations.add(format.replace(/\s+/g, '-'));
     }
   });
 

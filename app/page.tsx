@@ -39,8 +39,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>([]);
-  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>([]);
+  const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>({});
+  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>({});
   const [userDisplayName, setUserDisplayName] = useState<string>('');
 
   const [newEntry, setNewEntry] = useState({
@@ -57,7 +57,6 @@ export default function Home() {
     password: ''
   });
 
-  // User display name'i al
   useEffect(() => {
     if (user) {
       getUserDisplayName(user.uid).then(displayName => {
@@ -218,14 +217,13 @@ export default function Home() {
     }
     if (!newEntry.company || !newEntry.title || !newEntry.content) return;
 
-    // Display name al, yoksa email'den çıkar
     const displayName = userDisplayName || user.email?.split('@')[0] || 'Anonim';
 
     const result = await addEntry({
       company: newEntry.company,
       title: newEntry.title,
       content: newEntry.content,
-      author: displayName, // Email yerine display name kullan
+      author: displayName,
       authorId: user.uid,
       date: new Date().toISOString().split('T')[0]
     });
@@ -253,7 +251,6 @@ export default function Home() {
         setShowAuthModal(false);
         setShowWriteModal(true);
         setAuthForm({ username: '', email: '', password: '' });
-        // Display name'i güncelle
         setUserDisplayName(authForm.username);
       } else {
         setAuthError(result.error || 'Kayıt sırasında hata oluştu');
@@ -300,12 +297,11 @@ export default function Home() {
     e.preventDefault();
     if (!newReply.trim() || !replyingToEntry || !user) return;
 
-    // Display name al, yoksa email'den çıkar
     const displayName = userDisplayName || user.email?.split('@')[0] || 'Anonim';
 
     const result = await addReply(replyingToEntry, {
       content: newReply,
-      author: displayName, // Email yerine display name kullan
+      author: displayName,
       authorId: user.uid,
       date: new Date().toISOString().split('T')[0]
     });
@@ -322,7 +318,7 @@ export default function Home() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <i className="ri-loader-4-line text-4xl text-red-600 animate-spin mb-4"></i>
-          <p className="text-gray-600">Bağlanılıyor...</p>
+          <p className="text-gray-600">Bağlanıyor...</p>
         </div>
       </div>
     );
@@ -455,6 +451,7 @@ export default function Home() {
                       <i className="ri-logout-box-line" aria-hidden="true"></i>
                     </button>
                   </>
+
                 ) : (
                   <button 
                     onClick={handleWriteClick}
@@ -480,7 +477,7 @@ export default function Home() {
                   {companyStats.slice(0, 8).map((company, index) => (
                     <Link 
                       key={company.name}
-                      href={`/firma/${company.name.toLowerCase().replace(/\\s+/g, '- ')}`}
+                      href={`/firma/${company.name.toLowerCase().replace(/\\s+/g, '-')}`}
                       className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-3">
@@ -539,7 +536,7 @@ export default function Home() {
                       <div className="flex flex-wrap items-start justify-between mb-3 gap-2">
                         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                           <Link 
-                            href={`/firma/${entry.company.toLowerCase().replace(/\\s+/g, '- ')}`}
+                            href={`/firma/${entry.company.toLowerCase().replace(/\\s+/g, '-')}`}
                             className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-medium hover:bg-red-200 transition-colors cursor-pointer"
                           >
                             {entry.company}

@@ -560,7 +560,7 @@ export default function Home() {
                         <div className="flex items-center gap-3">
                           <button 
                             onClick={() => handleVote(entry.id!, 'like')}
-                            className={`flex items-center gap-1 px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                            className={`flex items-center gap-1 px-3 py-1 rounded-full transition-colors cursor-pointer ${ 
                               userVotes[entry.id!] === 'like' 
                                 ? 'bg-green-100 text-green-700' 
                                 : 'hover:bg-green-100 text-green-600'
@@ -573,7 +573,7 @@ export default function Home() {
                           
                           <button 
                             onClick={() => handleVote(entry.id!, 'dislike')}
-                            className={`flex items-center gap-1 px-3 py-1 rounded-full transition-colors cursor-pointer ${
+                            className={`flex items-center gap-1 px-3 py-1 rounded-full transition-colors cursor-pointer ${ 
                               userVotes[entry.id!] === 'dislike' 
                                 ? 'bg-red-100 text-red-700' 
                                 : 'hover:bg-red-100 text-red-600'

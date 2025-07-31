@@ -735,3 +735,21 @@ export const subscribeToAllReplies = (callback: (replies: Reply[]) => void) => {
     callback(replies);
   });
 };
+
+// Username çözümü için fonksiyon - email yerine displayName alır
+export const getUserDisplayName = async (uid: string): Promise<string> => {
+  try {
+    const q = query(collection(db, 'users'), where('uid', '==', uid));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const userData = querySnapshot.docs[0].data();
+      return userData.displayName || 'Anonim';
+    }
+
+    return 'Anonim';
+  } catch (error) {
+    console.error('Error getting user display name:', error);
+    return 'Anonim';
+  }
+};

@@ -24,7 +24,7 @@ import {
   voteEntry
 } from '../../lib/firebaseService';
 
-export default function AdminPanel() {
+export default function AdminPage() {
   const [user, loading] = useAuthState(auth);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [replies, setReplies] = useState<Reply[]>([]);
@@ -57,7 +57,6 @@ export default function AdminPanel() {
     author: ''
   });
 
-  // Check if user is admin
   const isAdmin = user?.email === 'grafikerius@dertlio.com' || user?.email === 'admin@dertlio.com';
 
   useEffect(() => {
@@ -106,7 +105,6 @@ export default function AdminPanel() {
 
     loadData();
 
-    // Subscribe to real-time updates
     const unsubscribeEntries = subscribeToEntries((newEntries) => {
       setEntries(newEntries);
       handleSearch(searchQuery, newEntries, 'entries');
@@ -305,7 +303,6 @@ export default function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="px-4 py-4">
           <div className="flex items-center justify-between max-w-7xl mx-auto">
@@ -334,356 +331,248 @@ export default function AdminPanel() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Tabs */}
-        <div className="bg-white rounded-lg border border-gray-200 mb-6">
-          <div className="flex border-b border-gray-200 overflow-x-auto">
-            <button
-              onClick={() => setSelectedTab('entries')}
-              className={`px-6 py-3 font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                selectedTab === 'entries'
-                  ? 'text-red-600 border-b-2 border-red-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Entryler ({entries.length})
-            </button>
-            <button
-              onClick={() => setSelectedTab('replies')}
-              className={`px-6 py-3 font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                selectedTab === 'replies'
-                  ? 'text-red-600 border-b-2 border-red-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Yanıtlar ({replies.length})
-            </button>
-            <button
-              onClick={() => setSelectedTab('users')}
-              className={`px-6 py-3 font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                selectedTab === 'users'
-                  ? 'text-red-600 border-b-2 border-red-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Kullanıcılar ({users.length})
-            </button>
-            <button
-              onClick={() => setSelectedTab('stats')}
-              className={`px-6 py-3 font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                selectedTab === 'stats'
-                  ? 'text-red-600 border-b-2 border-red-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              İstatistikler
-            </button>
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-gray-900">Admin Panel</h2>
           </div>
 
-          {/* Search Bar */}
+          <div className="flex flex-wrap gap-2">
+            {(['entries', 'replies', 'users', 'stats'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => {
+                  setSelectedTab(tab);
+                  setSearchQuery('');
+                }}
+                className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${
+                  selectedTab === tab
+                    ? 'bg-red-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {tab === 'entries' && `Şikayetler (${entries.length})`}
+                {tab === 'replies' && `Yanıtlar (${replies.length})`}
+                {tab === 'users' && `Kullanıcılar (${users.length})`}
+                {tab === 'stats' && `İstatistikler`}
+              </button>
+            ))}
+          </div>
+
           {selectedTab !== 'stats' && (
-            <div className="p-6 border-b border-gray-200">
-              <div className="relative max-w-md">
-                <input
-                  type="text"
-                  placeholder={
-                    selectedTab === 'entries' ? 'Entry ara...' :
-                    selectedTab === 'replies' ? 'Yanıt ara...' :
-                    'Kullanıcı ara...'
-                  }
-                  value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
-                />
-                <div className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 flex items-center justify-center">
-                  <i className="ri-search-line text-gray-400"></i>
-                </div>
+            <div className="relative max-w-md">
+              <input
+                type="text"
+                placeholder={`${selectedTab === 'entries' ? 'Şikayet' : selectedTab === 'replies' ? 'Yanıt' : 'Kullanıcı'} ara...`}
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
+              />
+              <div className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 flex items-center justify-center">
+                <i className="ri-search-line text-gray-400"></i>
               </div>
             </div>
           )}
 
-          {/* Entries Tab */}
           {selectedTab === 'entries' && (
-            <div className="p-6">
-              <div className="space-y-4">
-                {filteredEntries.map((entry) => (
-                  <div key={entry.id} className="bg-gray-50 rounded-lg p-4 border">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-medium">
-                          {entry.company}
-                        </span>
-                        <span className="text-gray-500 text-sm">{entry.author}</span>
-                        <span className="text-gray-500 text-sm">•</span>
-                        <span className="text-gray-500 text-sm">{entry.date}</span>
-                        <span className="text-gray-500 text-sm">•</span>
-                        <span className="text-gray-500 text-sm">{(entry.likes || 0) + (entry.dislikes || 0)} oy</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleEditEntry(entry)}
-                          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-blue-100 transition-colors cursor-pointer"
-                        >
-                          <i className="ri-edit-line text-blue-600"></i>
-                        </button>
-                        <button
-                          onClick={() => confirmDelete(entry.id!)}
-                          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-100 transition-colors cursor-pointer"
-                        >
-                          <i className="ri-delete-bin-line text-red-600"></i>
-                        </button>
+            <div className="bg-white rounded-lg border border-gray-200">
+              <div className="p-4 border-b border-gray-200">
+                <h3 className="font-semibold">Şikayetler ({filteredEntries.length})</h3>
+              </div>
+              <div className="divide-y divide-gray-200">
+                {filteredEntries.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">
+                    {searchQuery ? 'Aradığınız kriterlerde şikayet bulunamadı' : 'Henüz şikayet yok'}
+                  </div>
+                ) : (
+                  filteredEntries.map((entry) => (
+                    <div key={entry.id} className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="bg-red-100 text-red-700 px-2 py-1 text-xs rounded-full font-medium">
+                              {entry.company}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {entry.author} • {entry.date}
+                            </span>
+                          </div>
+                          <h4 className="font-semibold text-gray-900 mb-2">{entry.title}</h4>
+                          <p className="text-sm text-gray-600 mb-2">{entry.content.length > 200 ? entry.content.substring(0, 200) + '...' : entry.content}</p>
+                          <div className="flex items-center gap-4 text-xs text-gray-500">
+                            <span className="flex items-center gap-1">
+                              <i className="ri-thumb-up-line text-green-600"></i>
+                              {entry.likes || 0}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <i className="ri-thumb-down-line text-red-600"></i>
+                              {entry.dislikes || 0}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 ml-4">
+                          <button
+                            onClick={() => handleEditEntry(entry)}
+                            className="text-blue-600 hover:text-blue-800 text-sm cursor-pointer"
+                          >
+                            Düzenle
+                          </button>
+                          <button
+                            onClick={() => confirmDelete(entry.id!)}
+                            className="text-red-600 hover:text-red-800 text-sm cursor-pointer"
+                          >
+                            Sil
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <h3 className="font-semibold text-gray-800 mb-2">{entry.title}</h3>
-                    <p className="text-gray-700 text-sm leading-relaxed">{entry.content}</p>
-                  </div>
-                ))}
-
-                {filteredEntries.length === 0 && (
-                  <div className="text-center py-12">
-                    <i className="ri-inbox-line text-4xl text-gray-300 mb-4"></i>
-                    <p className="text-gray-500">
-                      {searchQuery ? 'Arama sonucu bulunamadı' : 'Henüz hiç entry yok'}
-                    </p>
-                  </div>
+                  ))
                 )}
               </div>
             </div>
           )}
 
-          {/* Replies Tab */}
           {selectedTab === 'replies' && (
-            <div className="p-6">
-              <div className="space-y-4">
-                {filteredReplies.map((reply) => (
-                  <div key={reply.id} className="bg-gray-50 rounded-lg p-4 border">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
-                          {reply.author}
-                        </span>
-                        <span className="text-gray-500 text-sm">{reply.date}</span>
-                        <span className="text-gray-500 text-sm">•</span>
-                        <span className="text-gray-500 text-sm">{(reply.likes || 0) + (reply.dislikes || 0)} oy</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleEditReply(reply)}
-                          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-blue-100 transition-colors cursor-pointer"
-                        >
-                          <i className="ri-edit-line text-blue-600"></i>
-                        </button>
-                        <button
-                          onClick={() => confirmDeleteReply(reply.id!)}
-                          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-100 transition-colors cursor-pointer"
-                        >
-                          <i className="ri-delete-bin-line text-red-600"></i>
-                        </button>
+            <div className="bg-white rounded-lg border border-gray-200">
+              <div className="p-4 border-b border-gray-200">
+                <h3 className="font-semibold">Yanıtlar ({filteredReplies.length})</h3>
+              </div>
+              <div className="divide-y divide-gray-200">
+                {filteredReplies.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">
+                    {searchQuery ? 'Aradığınız kriterlerde yanıt bulunamadı' : 'Henüz yanıt yok'}
+                  </div>
+                ) : (
+                  filteredReplies.map((reply) => (
+                    <div key={reply.id} className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+                            <span>{reply.author}</span>
+                            <span>•</span>
+                            <span>{reply.date}</span>
+                            <span>•</span>
+                            <span className="text-blue-600">{getEntryTitle(reply.entryId)}</span>
+                          </div>
+                          <p className="text-sm text-gray-600">{reply.content}</p>
+                        </div>
+                        <div className="flex gap-2 ml-4">
+                          <button
+                            onClick={() => handleEditReply(reply)}
+                            className="text-blue-600 hover:text-blue-800 text-sm cursor-pointer"
+                          >
+                            Düzenle
+                          </button>
+                          <button
+                            onClick={() => confirmDeleteReply(reply.id!)}
+                            className="text-red-600 hover:text-red-800 text-sm cursor-pointer"
+                          >
+                            Sil
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <p className="text-gray-700 text-sm leading-relaxed mb-2">{reply.content}</p>
-                    <div className="text-xs text-gray-500 bg-gray-100 rounded px-2 py-1 inline-block">
-                      Entry: {getEntryTitle(reply.entryId)}
-                    </div>
-                  </div>
-                ))}
-
-                {filteredReplies.length === 0 && (
-                  <div className="text-center py-12">
-                    <i className="ri-chat-3-line text-4xl text-gray-300 mb-4"></i>
-                    <p className="text-gray-500">
-                      {searchQuery ? 'Arama sonucu bulunamadı' : 'Henüz hiç yanıt yok'}
-                    </p>
-                  </div>
+                  ))
                 )}
               </div>
             </div>
           )}
 
-          {/* Users Tab */}
           {selectedTab === 'users' && (
-            <div className="p-6">
-              <div className="bg-white border rounded-lg overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Kullanıcı
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          E-posta
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Kayıt Tarihi
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Son Giriş
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Entry Sayısı
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Yanıt Sayısı
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredUsers.map((userProfile) => {
-                        const userEntries = entries.filter(e => e.authorId === userProfile.uid);
-                        const userReplies = replies.filter(r => r.authorId === userProfile.uid);
-
-                        return (
-                          <tr key={userProfile.id}>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                                  <span className="text-red-600 font-medium text-sm">
-                                    {userProfile.displayName.charAt(0).toUpperCase()}
-                                  </span>
-                                </div>
-                                <div className="ml-3">
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {userProfile.displayName}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {userProfile.email}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {formatDate(userProfile.createdAt)}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {formatDate(userProfile.lastLogin)}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {userEntries.length}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {userReplies.length}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {filteredUsers.length === 0 && (
-                  <div className="text-center py-12">
-                    <i className="ri-user-line text-4xl text-gray-300 mb-4"></i>
-                    <p className="text-gray-500">
-                      {searchQuery ? 'Arama sonucu bulunamadı' : 'Henüz hiç kullanıcı yok'}
-                    </p>
+            <div className="bg-white rounded-lg border border-gray-200">
+              <div className="p-4 border-b border-gray-200">
+                <h3 className="font-semibold">Kullanıcılar ({filteredUsers.length})</h3>
+              </div>
+              <div className="divide-y divide-gray-200">
+                {filteredUsers.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">
+                    {searchQuery ? 'Aradığınız kriterlerde kullanıcı bulunamadı' : 'Henüz kullanıcı yok'}
                   </div>
+                ) : (
+                  filteredUsers.map((user) => (
+                    <div key={user.id} className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-gray-900">{user.displayName}</div>
+                          <div className="text-sm text-gray-500">{user.email}</div>
+                          <div className="text-xs text-gray-400">
+                            Kayıt: {formatDate(user.createdAt)}
+                            {user.lastLogin && ` • Son giriş: ${formatDate(user.lastLogin)}`}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
           )}
 
-          {/* Stats Tab */}
           {selectedTab === 'stats' && (
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <div className="bg-blue-50 rounded-lg p-6">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                      <i className="ri-file-text-line text-white"></i>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-blue-600">{entries.length}</div>
-                      <div className="text-sm text-blue-600">Toplam Entry</div>
-                    </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                    <i className="ri-file-text-line text-red-600"></i>
                   </div>
-                </div>
-
-                <div className="bg-green-50 rounded-lg p-6">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
-                      <i className="ri-chat-3-line text-white"></i>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-green-600">{replies.length}</div>
-                      <div className="text-sm text-green-600">Toplam Yanıt</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-purple-50 rounded-lg p-6">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
-                      <i className="ri-user-line text-white"></i>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-purple-600">{users.length}</div>
-                      <div className="text-sm text-purple-600">Kayıtlı Kullanıcı</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-orange-50 rounded-lg p-6">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 bg-orange-600 rounded-lg flex items-center justify-center">
-                      <i className="ri-building-line text-white"></i>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-orange-600">{companyStats.length}</div>
-                      <div className="text-sm text-orange-600">Şirket Sayısı</div>
-                    </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Toplam Şikayet</h3>
+                    <p className="text-2xl font-bold text-red-600">{entries.length}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-8">
-                <h3 className="text-lg font-semibold mb-4">Şirket İstatistikleri</h3>
-                <div className="bg-white border rounded-lg overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Sıra
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Şirket
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Şikayet Sayısı
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {companyStats.map((company, index) => (
-                          <tr key={company.name}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {index + 1}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                              {company.name}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {company.totalComplaints}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <i className="ri-chat-3-line text-blue-600"></i>
                   </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Toplam Yanıt</h3>
+                    <p className="text-2xl font-bold text-blue-600">{replies.length}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                    <i className="ri-user-line text-green-600"></i>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Toplam Kullanıcı</h3>
+                    <p className="text-2xl font-bold text-green-600">{users.length}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="md:col-span-2 lg:col-span-3 bg-white rounded-lg border border-gray-200 p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">En Çok Şikayet Edilen Firmalar</h3>
+                <div className="space-y-3">
+                  {companyStats.slice(0, 10).map((company, index) => (
+                    <div key={company.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <span className="w-6 h-6 bg-red-100 text-red-700 rounded-full flex items-center justify-center text-sm font-medium">
+                          {index + 1}
+                        </span>
+                        <span className="font-medium">{company.name}</span>
+                      </div>
+                      <span className="text-sm text-gray-500">{company.totalComplaints} şikayet</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           )}
         </div>
-      </div>
+      </main>
 
-      {/* Edit Entry Modal */}
+      {/* Modals */}
       {showEditModal && editingEntry && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Entry Düzenle</h2>
+              <h2 className="text-xl font-semibold">Şikayeti Düzenle</h2>
               <button 
                 onClick={() => setShowEditModal(false)}
                 className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full cursor-pointer"
@@ -694,7 +583,7 @@ export default function AdminPanel() {
 
             <form onSubmit={handleUpdateEntry} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Şirket</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Firma</label>
                 <input
                   type="text"
                   value={editForm.company}
@@ -705,7 +594,7 @@ export default function AdminPanel() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Başlık</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Başlık</label>
                 <input
                   type="text"
                   value={editForm.title}
@@ -716,18 +605,18 @@ export default function AdminPanel() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">İçerik</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">İçerik</label>
                 <textarea
                   value={editForm.content}
                   onChange={(e) => setEditForm({...editForm, content: e.target.value})}
-                  rows={4}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm resize-none"
+                  rows={6}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Yazar</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Yazar</label>
                 <input
                   type="text"
                   value={editForm.author}
@@ -737,19 +626,19 @@ export default function AdminPanel() {
                 />
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex gap-4">
+                <button
+                  type="submit"
+                  className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors cursor-pointer"
+                >
+                  Güncelle
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 py-3 rounded-lg hover:bg-gray-300 transition-colors cursor-pointer whitespace-nowrap"
+                  className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors cursor-pointer"
                 >
                   İptal
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  Güncelle
                 </button>
               </div>
             </form>
@@ -757,114 +646,24 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* Edit Reply Modal */}
-      {showEditReplyModal && editingReply && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Yanıt Düzenle</h2>
-              <button 
-                onClick={() => setShowEditReplyModal(false)}
-                className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full cursor-pointer"
-              >
-                <i className="ri-close-line text-gray-500"></i>
-              </button>
-            </div>
-
-            <form onSubmit={handleUpdateReply} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">İçerik</label>
-                <textarea
-                  value={editReplyForm.content}
-                  onChange={(e) => setEditReplyForm({...editReplyForm, content: e.target.value})}
-                  rows={4}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm resize-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Yazar</label>
-                <input
-                  type="text"
-                  value={editReplyForm.author}
-                  onChange={(e) => setEditReplyForm({...editReplyForm, author: e.target.value})}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
-                  required
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowEditReplyModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 py-3 rounded-lg hover:bg-gray-300 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  İptal
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  Güncelle
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Entry Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <div className="text-center">
-              <i className="ri-error-warning-line text-4xl text-red-600 mb-4"></i>
-              <h2 className="text-xl font-semibold mb-2">Entry Silinsin mi?</h2>
-              <p className="text-gray-600 mb-6">Bu işlem geri alınamaz!</p>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowDeleteModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 py-3 rounded-lg hover:bg-gray-300 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  İptal
-                </button>
-                <button
-                  onClick={handleDeleteEntry}
-                  className="flex-1 bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  Sil
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Reply Confirmation Modal */}
-      {showDeleteReplyModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <div className="text-center">
-              <i className="ri-error-warning-line text-4xl text-red-600 mb-4"></i>
-              <h2 className="text-xl font-semibold mb-2">Yanıt Silinsin mi?</h2>
-              <p className="text-gray-600 mb-6">Bu işlem geri alınamaz!</p>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowDeleteReplyModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 py-3 rounded-lg hover:bg-gray-300 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  İptal
-                </button>
-                <button
-                  onClick={handleDeleteReply}
-                  className="flex-1 bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  Sil
-                </button>
-              </div>
+            <h2 className="text-lg font-semibold mb-4">Şikayeti Sil</h2>
+            <p className="text-gray-600 mb-6">Bu şikayeti silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.</p>
+            <div className="flex gap-4">
+              <button
+                onClick={handleDeleteEntry}
+                className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors cursor-pointer"
+              >
+                Sil
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors cursor-pointer"
+              >
+                İptal
+              </button>
             </div>
           </div>
         </div>

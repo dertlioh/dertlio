@@ -39,7 +39,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>([]);
-  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>([]);
+  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>({});
   const [userDisplayName, setUserDisplayName] = useState<string>('');
 
   const [newEntry, setNewEntry] = useState({
@@ -423,7 +423,7 @@ export default function Home() {
                     >
                       <i className="ri-admin-line" aria-hidden="true"></i>
                     </Link>
-                  )}
+                  )}  
                   <button 
                     onClick={handleLogout}
                     className="text-gray-600 hover:text-gray-800 cursor-pointer p-2"
@@ -442,7 +442,7 @@ export default function Home() {
                   <span className="hidden sm:inline">Dert Yaz</span>
                   <span className="sm:hidden">Yaz</span>
                 </button>
-              )}
+              )}  
             </div>
           </div>
         </div>
@@ -548,7 +548,6 @@ export default function Home() {
                           <i className="ri-thumb-up-line" aria-hidden="true"></i>
                           <span className="text-sm font-medium">{entry.likes || 0}</span>
                         </button>
-                        
                         <button 
                           onClick={() => handleVote(entry.id!, 'dislike')}
                           className={`flex items-center gap-1 px-3 py-1 rounded-full transition-colors cursor-pointer ${ 

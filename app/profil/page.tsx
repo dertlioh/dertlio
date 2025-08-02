@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -30,13 +31,16 @@ export default function ProfilePage() {
   const [userDisplayName, setUserDisplayName] = useState<string>('');
   const [showDeleteModal, setShowDeleteModal] = useState<{show: boolean, type: 'entry' | 'reply', id: string}>({show: false, type: 'entry', id: ''});
 
+  // Admin kontrolü - sadece yetkili hesaplar için
+  const isAdmin = user?.email === 'grafikerius@dertlio.com' || user?.email === 'admin@dertlio.com';
+
   useEffect(() => {
     if (!user) return;
 
     const loadUserData = async () => {
       try {
         setIsLoading(true);
-        
+
         // Kullanıcı adını al
         const displayName = await getUserDisplayName(user.uid);
         setUserDisplayName(displayName);
@@ -179,9 +183,11 @@ export default function ProfilePage() {
               <Link href="/" className="text-gray-600 hover:text-gray-900 transition-colors cursor-pointer">
                 Ana Sayfa
               </Link>
-              <Link href="/admin" className="text-gray-600 hover:text-gray-900 transition-colors cursor-pointer">
-                Admin Panel
-              </Link>
+              {isAdmin && (
+                <Link href="/admin" className="text-gray-600 hover:text-gray-900 transition-colors cursor-pointer">
+                  Admin Panel
+                </Link>
+              )}
             </nav>
 
             <div className="flex items-center gap-3">
@@ -316,7 +322,7 @@ export default function ProfilePage() {
                           <div className="flex items-start justify-between mb-3">
                             <div>
                               <Link 
-                                href={`/firma/${entry.company.toLowerCase().replace(/\s+/g, '-')}`}
+                                href={`/firma/${entry.company.toLowerCase().replace(/\\s+/g, '-')}`}
                                 className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-medium hover:bg-red-200 transition-colors cursor-pointer"
                               >
                                 {entry.company}
@@ -356,8 +362,8 @@ export default function ProfilePage() {
                       )}
                     </div>
                   ))
-                )}
-              </div>
+                )
+              }
             )}
 
             {activeTab === 'replies' && (
@@ -435,8 +441,8 @@ export default function ProfilePage() {
                       )}
                     </div>
                   ))
-                )}
-              </div>
+                )
+              }
             )}
           </div>
         </div>
@@ -450,12 +456,12 @@ export default function ProfilePage() {
               <i className="ri-delete-bin-line text-2xl text-red-600"></i>
               <h2 className="text-xl font-semibold">Silme Onayı</h2>
             </div>
-            
+
             <p className="text-gray-600 mb-6">
               Bu {showDeleteModal.type === 'entry' ? 'entry\'yi' : 'yanıtı'} silmek istediğinizden emin misiniz? 
               Bu işlem geri alınamaz.
             </p>
-            
+
             <div className="flex gap-3">
               <button
                 onClick={() => {

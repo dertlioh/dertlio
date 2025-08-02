@@ -39,7 +39,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>({});
-  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>({});
+  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>([]);
   const [userDisplayName, setUserDisplayName] = useState<string>('');
 
   const [newEntry, setNewEntry] = useState({
@@ -312,12 +312,14 @@ export default function Home() {
     }
   };
 
+  const isAdmin = user?.email === 'grafikerius@dertlio.com' || user?.email === 'admin@dertlio.com';
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <i className="ri-loader-4-line text-4xl text-red-600 animate-spin mb-4"></i>
-          <p className="text-gray-600">Bağlanıyor...</p>
+          <p className="text-gray-600">Bağlanılıyor...</p>
         </div>
       </div>
     );
@@ -412,14 +414,16 @@ export default function Home() {
                   >
                     <i className="ri-user-line" aria-hidden="true"></i>
                   </Link>
-                  <Link 
-                    href="/admin"
-                    className="text-gray-600 hover:text-gray-800 cursor-pointer p-2"
-                    title="Admin Panel"
-                    aria-label="Admin Panel"
-                  >
-                    <i className="ri-admin-line" aria-hidden="true"></i>
-                  </Link>
+                  {isAdmin && (
+                    <Link 
+                      href="/admin"
+                      className="text-gray-600 hover:text-gray-800 cursor-pointer p-2"
+                      title="Admin Panel"
+                      aria-label="Admin Panel"
+                    >
+                      <i className="ri-admin-line" aria-hidden="true"></i>
+                    </Link>
+                  )}
                   <button 
                     onClick={handleLogout}
                     className="text-gray-600 hover:text-gray-800 cursor-pointer p-2"
@@ -454,7 +458,7 @@ export default function Home() {
                 {companyStats.slice(0, 8).map((company, index) => (
                   <Link 
                     key={company.name}
-                    href={`/firma/${company.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    href={`/firma/${company.name.toLowerCase().replace(/\\s+/g, '-')}`}
                     className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
@@ -513,7 +517,7 @@ export default function Home() {
                     <div className="flex flex-wrap items-start justify-between mb-3 gap-2">
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         <Link 
-                          href={`/firma/${entry.company.toLowerCase().replace(/\s+/g, '-')}`}
+                          href={`/firma/${entry.company.toLowerCase().replace(/\\s+/g, '-')}`}
                           className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-medium hover:bg-red-200 transition-colors cursor-pointer"
                         >
                           {entry.company}

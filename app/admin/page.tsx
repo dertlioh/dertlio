@@ -40,6 +40,11 @@ interface SystemStats {
   activeUsers: number;
 }
 
+interface ExtendedUserProfile extends UserProfile {
+  totalEntries?: number;
+  totalReplies?: number;
+}
+
 export default function AdminPage() {
   const [user, loading] = useAuthState(auth);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -57,7 +62,7 @@ export default function AdminPage() {
   // Modal states
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
   const [editingReply, setEditingReply] = useState<Reply | null>(null);
-  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [selectedUser, setSelectedUser] = useState<ExtendedUserProfile | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEditReplyModal, setShowEditReplyModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -326,7 +331,7 @@ export default function AdminPage() {
   const handleUserDetails = async (user: UserProfile) => {
     const result = await getUserDetails(user.uid);
     if (result.success) {
-      setSelectedUser({ ...user, ...result.user });
+      setSelectedUser({ ...user, ...result.user } as ExtendedUserProfile);
       setShowUserModal(true);
     }
   };
@@ -866,7 +871,7 @@ export default function AdminPage() {
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Şikayeti Düzenle</h2>
-              <button 
+              <button
                 onClick={() => setShowEditModal(false)}
                 className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full cursor-pointer"
               >
@@ -945,7 +950,7 @@ export default function AdminPage() {
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Yanıtı Düzenle</h2>
-              <button 
+              <button
                 onClick={() => setShowEditReplyModal(false)}
                 className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full cursor-pointer"
               >
@@ -1090,7 +1095,7 @@ export default function AdminPage() {
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Kullanıcı Detayları</h2>
-              <button 
+              <button
                 onClick={() => setShowUserModal(false)}
                 className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full cursor-pointer"
               >

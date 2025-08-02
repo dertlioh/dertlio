@@ -100,9 +100,9 @@ const formatCompanyName = (urlName: string): string => {
 
   let formatted = decoded
     .replace(/-/g, ' ')
-    .replace(/\+/g, ' ')
+    .replace(/\\+/g, ' ')
     .replace(/_/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/\\s+/g, ' ')
     .trim();
 
   formatted = formatted
@@ -138,8 +138,8 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>([]);
-  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>( {});
+  const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>({});
+  const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>({});
 
   const [newEntry, setNewEntry] = useState({ title: '', content: '' });
   const [newReply, setNewReply] = useState('');

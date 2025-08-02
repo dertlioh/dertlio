@@ -38,7 +38,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>({});
+  const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>([]);
   const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>([]);
   const [userDisplayName, setUserDisplayName] = useState<string>('');
 

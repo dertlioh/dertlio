@@ -158,7 +158,7 @@ const normalizeCompanyName = (name: string): string[] => {
     processedName + ' a.ş',
     processedName + ' inc',
     processedName.replace(/\s+(ltd|şti|a\.ş|inc|corp|co)$/i, ''),
-    processedName.replace(/^(the\s+)/i, '')
+    processedName.replace(/^(the\\s+)/i, '')
   ];
 
   commonFormats.forEach(format => {
@@ -908,21 +908,27 @@ export const getSystemStats = async () => {
       }
     });
 
+    const stats = {
+      totalEntries: entriesSnapshot.size,
+      totalReplies: repliesSnapshot.size,
+      totalUsers: usersSnapshot.size,
+      todayEntries,
+      weekEntries,
+      monthEntries,
+      bannedUsers,
+      activeUsers
+    };
+
     return {
       success: true,
-      stats: {
-        totalEntries: entriesSnapshot.size,
-        totalReplies: repliesSnapshot.size,
-        totalUsers: usersSnapshot.size,
-        todayEntries,
-        weekEntries,
-        monthEntries,
-        bannedUsers,
-        activeUsers
-      }
+      stats
     };
   } catch (error: any) {
-    return { success: false, error: error.message };
+    return { 
+      success: false, 
+      error: error.message,
+      stats: undefined
+    };
   }
 };
 

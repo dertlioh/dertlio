@@ -129,7 +129,7 @@ export default function AdminPage() {
           setCompanyStats(statsResult.stats);
         }
 
-        if (systemStatsResult.success) {
+        if (systemStatsResult.success && systemStatsResult.stats) {
           setSystemStats(systemStatsResult.stats);
         }
       } catch (error) {

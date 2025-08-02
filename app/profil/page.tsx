@@ -322,7 +322,7 @@ export default function ProfilePage() {
                           <div className="flex items-start justify-between mb-3">
                             <div>
                               <Link 
-                                href={`/firma/${entry.company.toLowerCase().replace(/\\s+/g, '-')}`}
+                                href={`/firma/${entry.company.toLowerCase().replace(/\\s+/g, '-')}}`
                                 className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-medium hover:bg-red-200 transition-colors cursor-pointer"
                               >
                                 {entry.company}

@@ -21,8 +21,24 @@ import {
   subscribeToEntries,
   subscribeToUsers,
   subscribeToAllReplies,
-  voteEntry
+  banUser,
+  unbanUser,
+  getUserDetails,
+  bulkDeleteEntries,
+  bulkDeleteReplies,
+  getSystemStats
 } from '../../lib/firebaseService';
+
+interface SystemStats {
+  totalEntries: number;
+  totalReplies: number;
+  totalUsers: number;
+  todayEntries: number;
+  weekEntries: number;
+  monthEntries: number;
+  bannedUsers: number;
+  activeUsers: number;
+}
 
 export default function AdminPage() {
   const [user, loading] = useAuthState(auth);
@@ -30,20 +46,35 @@ export default function AdminPage() {
   const [replies, setReplies] = useState<Reply[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [companyStats, setCompanyStats] = useState<CompanyStats[]>([]);
-  const [selectedTab, setSelectedTab] = useState<'entries' | 'replies' | 'users' | 'stats'>('entries');
+  const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
+  const [selectedTab, setSelectedTab] = useState<'dashboard' | 'entries' | 'replies' | 'users' | 'stats'>('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredEntries, setFilteredEntries] = useState<Entry[]>([]);
   const [filteredReplies, setFilteredReplies] = useState<Reply[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Modal states
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
   const [editingReply, setEditingReply] = useState<Reply | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEditReplyModal, setShowEditReplyModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeleteReplyModal, setShowDeleteReplyModal] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [showBanModal, setShowBanModal] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
+  const [banningUser, setBanningUser] = useState<UserProfile | null>(null);
+  const [banReason, setBanReason] = useState('');
+
+  // Bulk selection
+  const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
+  const [selectedReplies, setSelectedReplies] = useState<string[]>([]);
+  const [bulkMode, setBulkMode] = useState(false);
 
   const [editForm, setEditForm] = useState({
     company: '',
@@ -71,11 +102,12 @@ export default function AdminPage() {
       setIsLoading(true);
 
       try {
-        const [entriesResult, repliesResult, usersResult, statsResult] = await Promise.all([
+        const [entriesResult, repliesResult, usersResult, statsResult, systemStatsResult] = await Promise.all([
           getEntries(),
           getAllReplies(),
           getUsers(),
-          getCompanyStats()
+          getCompanyStats(),
+          getSystemStats()
         ]);
 
         if (entriesResult.success) {
@@ -95,6 +127,10 @@ export default function AdminPage() {
 
         if (statsResult.success) {
           setCompanyStats(statsResult.stats);
+        }
+
+        if (systemStatsResult.success) {
+          setSystemStats(systemStatsResult.stats);
         }
       } catch (error) {
         console.error('Data loading error:', error);
@@ -251,6 +287,50 @@ export default function AdminPage() {
     }
   };
 
+  const handleBanUser = async () => {
+    if (!banningUser) return;
+
+    const result = await banUser(banningUser.uid, banReason);
+    if (result.success) {
+      setShowBanModal(false);
+      setBanningUser(null);
+      setBanReason('');
+    }
+  };
+
+  const handleUnbanUser = async (userId: string) => {
+    const result = await unbanUser(userId);
+    if (result.success) {
+      // Refresh users
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedTab === 'entries' && selectedEntries.length > 0) {
+      const result = await bulkDeleteEntries(selectedEntries);
+      if (result.success) {
+        setSelectedEntries([]);
+        setBulkMode(false);
+        setShowBulkDeleteModal(false);
+      }
+    } else if (selectedTab === 'replies' && selectedReplies.length > 0) {
+      const result = await bulkDeleteReplies(selectedReplies);
+      if (result.success) {
+        setSelectedReplies([]);
+        setBulkMode(false);
+        setShowBulkDeleteModal(false);
+      }
+    }
+  };
+
+  const handleUserDetails = async (user: UserProfile) => {
+    const result = await getUserDetails(user.uid);
+    if (result.success) {
+      setSelectedUser({ ...user, ...result.user });
+      setShowUserModal(true);
+    }
+  };
+
   const confirmDelete = (entryId: string) => {
     setDeletingEntryId(entryId);
     setShowDeleteModal(true);
@@ -273,6 +353,22 @@ export default function AdminPage() {
     } catch {
       return 'Tarih yok';
     }
+  };
+
+  const toggleEntrySelection = (entryId: string) => {
+    setSelectedEntries(prev => 
+      prev.includes(entryId) 
+        ? prev.filter(id => id !== entryId)
+        : [...prev, entryId]
+    );
+  };
+
+  const toggleReplySelection = (replyId: string) => {
+    setSelectedReplies(prev => 
+      prev.includes(replyId) 
+        ? prev.filter(id => id !== replyId)
+        : [...prev, replyId]
+    );
   };
 
   if (loading || isLoading) {
@@ -321,11 +417,32 @@ export default function AdminPage() {
 
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-600">
-                Merhaba, <span className="font-medium">{user.email?.split('@')[0]}</span>
+                Admin: <span className="font-medium">{user.displayName}</span>
               </span>
-              <Link href="/" className="text-gray-600 hover:text-gray-800 cursor-pointer">
+              <Link 
+                href="/profil"
+                className="text-gray-600 hover:text-gray-800 cursor-pointer p-2"
+                title="Profilim"
+              >
+                <i className="ri-user-line"></i>
+              </Link>
+              <Link 
+                href="/"
+                className="text-gray-600 hover:text-gray-800 cursor-pointer p-2"
+                title="Ana Sayfa"
+              >
                 <i className="ri-home-line"></i>
               </Link>
+              <button 
+                onClick={() => {
+                  auth.signOut();
+                  window.location.href = '/';
+                }}
+                className="text-gray-600 hover:text-gray-800 cursor-pointer p-2"
+                title="Çıkış Yap"
+              >
+                <i className="ri-logout-box-line"></i>
+              </button>
             </div>
           </div>
         </div>
@@ -335,31 +452,61 @@ export default function AdminPage() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold text-gray-900">Admin Panel</h2>
+            {(selectedTab === 'entries' || selectedTab === 'replies') && (
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setBulkMode(!bulkMode);
+                    setSelectedEntries([]);
+                    setSelectedReplies([]);
+                  }}
+                  className={`px-4 py-2 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                    bulkMode 
+                      ? 'bg-red-600 text-white' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  Toplu Seçim
+                </button>
+                {bulkMode && ((selectedTab === 'entries' && selectedEntries.length > 0) || (selectedTab === 'replies' && selectedReplies.length > 0)) && (
+                  <button
+                    onClick={() => setShowBulkDeleteModal(true)}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    Seçilenleri Sil ({selectedTab === 'entries' ? selectedEntries.length : selectedReplies.length})
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {(['entries', 'replies', 'users', 'stats'] as const).map((tab) => (
+            {(['dashboard', 'entries', 'replies', 'users', 'stats'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => {
                   setSelectedTab(tab);
                   setSearchQuery('');
+                  setBulkMode(false);
+                  setSelectedEntries([]);
+                  setSelectedReplies([]);
                 }}
-                className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${
+                className={`px-4 py-2 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                   selectedTab === tab
                     ? 'bg-red-600 text-white'
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                 }`}
               >
+                {tab === 'dashboard' && 'Dashboard'}
                 {tab === 'entries' && `Şikayetler (${entries.length})`}
                 {tab === 'replies' && `Yanıtlar (${replies.length})`}
                 {tab === 'users' && `Kullanıcılar (${users.length})`}
-                {tab === 'stats' && `İstatistikler`}
+                {tab === 'stats' && 'İstatistikler'}
               </button>
             ))}
           </div>
 
-          {selectedTab !== 'stats' && (
+          {selectedTab !== 'dashboard' && selectedTab !== 'stats' && (
             <div className="relative max-w-md">
               <input
                 type="text"
@@ -370,6 +517,90 @@ export default function AdminPage() {
               />
               <div className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 flex items-center justify-center">
                 <i className="ri-search-line text-gray-400"></i>
+              </div>
+            </div>
+          )}
+
+          {selectedTab === 'dashboard' && systemStats && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                      <i className="ri-file-text-line text-red-600 text-xl"></i>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-600">Toplam Şikayet</h3>
+                      <p className="text-2xl font-bold text-gray-900">{systemStats.totalEntries}</p>
+                      <p className="text-xs text-green-600">+{systemStats.todayEntries} bugün</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <i className="ri-chat-3-line text-blue-600 text-xl"></i>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-600">Toplam Yanıt</h3>
+                      <p className="text-2xl font-bold text-gray-900">{systemStats.totalReplies}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                      <i className="ri-user-line text-green-600 text-xl"></i>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-600">Aktif Kullanıcı</h3>
+                      <p className="text-2xl font-bold text-gray-900">{systemStats.activeUsers}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                      <i className="ri-user-forbid-line text-orange-600 text-xl"></i>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-600">Banlı Kullanıcı</h3>
+                      <p className="text-2xl font-bold text-gray-900">{systemStats.bannedUsers}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">Son Aktiviteler</h3>
+                  <div className="space-y-3">
+                    <div className="text-sm text-gray-600">Bu hafta {systemStats.weekEntries} şikayet eklendi</div>
+                    <div className="text-sm text-gray-600">Bu ay {systemStats.monthEntries} şikayet eklendi</div>
+                    <div className="text-sm text-gray-600">Toplam {systemStats.totalUsers} kayıtlı kullanıcı</div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">Hızlı Erişim</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setSelectedTab('entries')}
+                      className="p-3 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors text-sm font-medium cursor-pointer whitespace-nowrap"
+                    >
+                      Şikayetleri Yönet
+                    </button>
+                    <button
+                      onClick={() => setSelectedTab('users')}
+                      className="p-3 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium cursor-pointer whitespace-nowrap"
+                    >
+                      Kullanıcıları Yönet
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -387,7 +618,15 @@ export default function AdminPage() {
                 ) : (
                   filteredEntries.map((entry) => (
                     <div key={entry.id} className="p-4">
-                      <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3">
+                        {bulkMode && (
+                          <input
+                            type="checkbox"
+                            checked={selectedEntries.includes(entry.id!)}
+                            onChange={() => toggleEntrySelection(entry.id!)}
+                            className="mt-1 cursor-pointer"
+                          />
+                        )}
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
                             <span className="bg-red-100 text-red-700 px-2 py-1 text-xs rounded-full font-medium">
@@ -410,20 +649,22 @@ export default function AdminPage() {
                             </span>
                           </div>
                         </div>
-                        <div className="flex gap-2 ml-4">
-                          <button
-                            onClick={() => handleEditEntry(entry)}
-                            className="text-blue-600 hover:text-blue-800 text-sm cursor-pointer"
-                          >
-                            Düzenle
-                          </button>
-                          <button
-                            onClick={() => confirmDelete(entry.id!)}
-                            className="text-red-600 hover:text-red-800 text-sm cursor-pointer"
-                          >
-                            Sil
-                          </button>
-                        </div>
+                        {!bulkMode && (
+                          <div className="flex gap-2 ml-4">
+                            <button
+                              onClick={() => handleEditEntry(entry)}
+                              className="text-blue-600 hover:text-blue-800 text-sm cursor-pointer whitespace-nowrap"
+                            >
+                              Düzenle
+                            </button>
+                            <button
+                              onClick={() => confirmDelete(entry.id!)}
+                              className="text-red-600 hover:text-red-800 text-sm cursor-pointer whitespace-nowrap"
+                            >
+                              Sil
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))
@@ -445,7 +686,15 @@ export default function AdminPage() {
                 ) : (
                   filteredReplies.map((reply) => (
                     <div key={reply.id} className="p-4">
-                      <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3">
+                        {bulkMode && (
+                          <input
+                            type="checkbox"
+                            checked={selectedReplies.includes(reply.id!)}
+                            onChange={() => toggleReplySelection(reply.id!)}
+                            className="mt-1 cursor-pointer"
+                          />
+                        )}
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
                             <span>{reply.author}</span>
@@ -456,20 +705,22 @@ export default function AdminPage() {
                           </div>
                           <p className="text-sm text-gray-600">{reply.content}</p>
                         </div>
-                        <div className="flex gap-2 ml-4">
-                          <button
-                            onClick={() => handleEditReply(reply)}
-                            className="text-blue-600 hover:text-blue-800 text-sm cursor-pointer"
-                          >
-                            Düzenle
-                          </button>
-                          <button
-                            onClick={() => confirmDeleteReply(reply.id!)}
-                            className="text-red-600 hover:text-red-800 text-sm cursor-pointer"
-                          >
-                            Sil
-                          </button>
-                        </div>
+                        {!bulkMode && (
+                          <div className="flex gap-2 ml-4">
+                            <button
+                              onClick={() => handleEditReply(reply)}
+                              className="text-blue-600 hover:text-blue-800 text-sm cursor-pointer whitespace-nowrap"
+                            >
+                              Düzenle
+                            </button>
+                            <button
+                              onClick={() => confirmDeleteReply(reply.id!)}
+                              className="text-red-600 hover:text-red-800 text-sm cursor-pointer whitespace-nowrap"
+                            >
+                              Sil
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))
@@ -489,16 +740,54 @@ export default function AdminPage() {
                     {searchQuery ? 'Aradığınız kriterlerde kullanıcı bulunamadı' : 'Henüz kullanıcı yok'}
                   </div>
                 ) : (
-                  filteredUsers.map((user) => (
-                    <div key={user.id} className="p-4">
+                  filteredUsers.map((userItem) => (
+                    <div key={userItem.id} className="p-4">
                       <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-medium text-gray-900">{user.displayName}</div>
-                          <div className="text-sm text-gray-500">{user.email}</div>
-                          <div className="text-xs text-gray-400">
-                            Kayıt: {formatDate(user.createdAt)}
-                            {user.lastLogin && ` • Son giriş: ${formatDate(user.lastLogin)}`}
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                            <i className="ri-user-line text-gray-600"></i>
                           </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">{userItem.displayName}</span>
+                              {userItem.banned && (
+                                <span className="bg-red-100 text-red-700 px-2 py-1 text-xs rounded-full font-medium">
+                                  Banlı
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-500">{userItem.email}</div>
+                            <div className="text-xs text-gray-400">
+                              Kayıt: {formatDate(userItem.createdAt)}
+                              {userItem.lastLogin && ` • Son giriş: ${formatDate(userItem.lastLogin)}`}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleUserDetails(userItem)}
+                            className="text-blue-600 hover:text-blue-800 text-sm cursor-pointer whitespace-nowrap"
+                          >
+                            Detay
+                          </button>
+                          {userItem.banned ? (
+                            <button
+                              onClick={() => handleUnbanUser(userItem.uid)}
+                              className="text-green-600 hover:text-green-800 text-sm cursor-pointer whitespace-nowrap"
+                            >
+                              Banı Kaldır
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setBanningUser(userItem);
+                                setShowBanModal(true);
+                              }}
+                              className="text-red-600 hover:text-red-800 text-sm cursor-pointer whitespace-nowrap"
+                            >
+                              Banla
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -510,41 +799,45 @@ export default function AdminPage() {
 
           {selectedTab === 'stats' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                    <i className="ri-file-text-line text-red-600"></i>
+              {systemStats && (
+                <>
+                  <div className="bg-white rounded-lg border border-gray-200 p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                        <i className="ri-file-text-line text-red-600"></i>
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">Toplam Şikayet</h3>
+                        <p className="text-2xl font-bold text-red-600">{systemStats.totalEntries}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Toplam Şikayet</h3>
-                    <p className="text-2xl font-bold text-red-600">{entries.length}</p>
-                  </div>
-                </div>
-              </div>
 
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <i className="ri-chat-3-line text-blue-600"></i>
+                  <div className="bg-white rounded-lg border border-gray-200 p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <i className="ri-chat-3-line text-blue-600"></i>
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">Toplam Yanıt</h3>
+                        <p className="text-2xl font-bold text-blue-600">{systemStats.totalReplies}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Toplam Yanıt</h3>
-                    <p className="text-2xl font-bold text-blue-600">{replies.length}</p>
-                  </div>
-                </div>
-              </div>
 
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <i className="ri-user-line text-green-600"></i>
+                  <div className="bg-white rounded-lg border border-gray-200 p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                        <i className="ri-user-line text-green-600"></i>
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">Toplam Kullanıcı</h3>
+                        <p className="text-2xl font-bold text-green-600">{systemStats.totalUsers}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Toplam Kullanıcı</h3>
-                    <p className="text-2xl font-bold text-green-600">{users.length}</p>
-                  </div>
-                </div>
-              </div>
+                </>
+              )}
 
               <div className="md:col-span-2 lg:col-span-3 bg-white rounded-lg border border-gray-200 p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">En Çok Şikayet Edilen Firmalar</h3>
@@ -567,7 +860,7 @@ export default function AdminPage() {
         </div>
       </main>
 
-      {/* Modals */}
+      {/* Edit Entry Modal */}
       {showEditModal && editingEntry && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -629,14 +922,14 @@ export default function AdminPage() {
               <div className="flex gap-4">
                 <button
                   type="submit"
-                  className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors cursor-pointer"
+                  className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   Güncelle
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors cursor-pointer"
+                  className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   İptal
                 </button>
@@ -646,6 +939,64 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* Edit Reply Modal */}
+      {showEditReplyModal && editingReply && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Yanıtı Düzenle</h2>
+              <button 
+                onClick={() => setShowEditReplyModal(false)}
+                className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full cursor-pointer"
+              >
+                <i className="ri-close-line text-gray-500"></i>
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateReply} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">İçerik</label>
+                <textarea
+                  value={editReplyForm.content}
+                  onChange={(e) => setEditReplyForm({...editReplyForm, content: e.target.value})}
+                  rows={6}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Yazar</label>
+                <input
+                  type="text"
+                  value={editReplyForm.author}
+                  onChange={(e) => setEditReplyForm({...editReplyForm, author: e.target.value})}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-4">
+                <button
+                  type="submit"
+                  className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  Güncelle
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEditReplyModal(false)}
+                  className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  İptal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Entry Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
@@ -654,13 +1005,167 @@ export default function AdminPage() {
             <div className="flex gap-4">
               <button
                 onClick={handleDeleteEntry}
-                className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors cursor-pointer"
+                className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors cursor-pointer whitespace-nowrap"
               >
                 Sil
               </button>
               <button
                 onClick={() => setShowDeleteModal(false)}
-                className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors cursor-pointer"
+                className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                İptal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Reply Modal */}
+      {showDeleteReplyModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-semibold mb-4">Yanıtı Sil</h2>
+            <p className="text-gray-600 mb-6">Bu yanıtı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.</p>
+            <div className="flex gap-4">
+              <button
+                onClick={handleDeleteReply}
+                className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                Sil
+              </button>
+              <button
+                onClick={() => setShowDeleteReplyModal(false)}
+                className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                İptal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ban User Modal */}
+      {showBanModal && banningUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-semibold mb-4">Kullanıcıyı Banla</h2>
+            <p className="text-gray-600 mb-4">
+              <strong>{banningUser.displayName}</strong> kullanıcısını banlamak istediğinizden emin misiniz?
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Ban Sebebi (Opsiyonel)</label>
+              <textarea
+                value={banReason}
+                onChange={(e) => setBanReason(e.target.value)}
+                rows={3}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
+                placeholder="Ban sebebini yazın..."
+              />
+            </div>
+            <div className="flex gap-4">
+              <button
+                onClick={handleBanUser}
+                className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                Banla
+              </button>
+              <button
+                onClick={() => {
+                  setShowBanModal(false);
+                  setBanningUser(null);
+                  setBanReason('');
+                }}
+                className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                İptal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Details Modal */}
+      {showUserModal && selectedUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Kullanıcı Detayları</h2>
+              <button 
+                onClick={() => setShowUserModal(false)}
+                className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full cursor-pointer"
+              >
+                <i className="ri-close-line text-gray-500"></i>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center">
+                  <i className="ri-user-line text-gray-600 text-2xl"></i>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">{selectedUser.displayName}</h3>
+                  <p className="text-gray-600">{selectedUser.email}</p>
+                  {selectedUser.banned && (
+                    <span className="inline-block mt-1 bg-red-100 text-red-700 px-2 py-1 text-xs rounded-full font-medium">
+                      Banlı
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600">Toplam Şikayet</div>
+                  <div className="text-2xl font-bold text-red-600">{selectedUser.totalEntries || 0}</div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600">Toplam Yanıt</div>
+                  <div className="text-2xl font-bold text-blue-600">{selectedUser.totalReplies || 0}</div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm">
+                  <span className="text-gray-600">Kayıt Tarihi:</span>
+                  <span className="ml-2">{formatDate(selectedUser.createdAt)}</span>
+                </div>
+                {selectedUser.lastLogin && (
+                  <div className="text-sm">
+                    <span className="text-gray-600">Son Giriş:</span>
+                    <span className="ml-2">{formatDate(selectedUser.lastLogin)}</span>
+                  </div>
+                )}
+                {selectedUser.banned && selectedUser.banReason && (
+                  <div className="text-sm">
+                    <span className="text-gray-600">Ban Sebebi:</span>
+                    <span className="ml-2 text-red-600">{selectedUser.banReason}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Modal */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-semibold mb-4">Toplu Silme</h2>
+            <p className="text-gray-600 mb-6">
+              Seçili {selectedTab === 'entries' ? selectedEntries.length + ' şikayeti' : selectedReplies.length + ' yanıtı'} silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={handleBulkDelete}
+                className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                Seçilenleri Sil
+              </button>
+              <button
+                onClick={() => setShowBulkDeleteModal(false)}
+                className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors cursor-pointer whitespace-nowrap"
               >
                 İptal
               </button>

@@ -68,6 +68,10 @@ export interface UserProfile {
   email: string;
   createdAt: Timestamp;
   lastLogin?: Timestamp;
+  banned?: boolean;
+  banReason?: string;
+  bannedAt?: Timestamp;
+  unbannedAt?: Timestamp;
 }
 
 // Word mappings for company name variations
@@ -153,8 +157,8 @@ const normalizeCompanyName = (name: string): string[] => {
     processedName + ' şti',
     processedName + ' a.ş',
     processedName + ' inc',
-    processedName.replace(/\s+(ltd|şti|a\\.ş|inc|corp|co)$/i, ''),
-    processedName.replace(/^(the\\s+)/i, '')
+    processedName.replace(/\s+(ltd|şti|a\.ş|inc|corp|co)$/i, ''),
+    processedName.replace(/^(the\s+)/i, '')
   ];
 
   commonFormats.forEach(format => {
@@ -751,5 +755,207 @@ export const getUserDisplayName = async (uid: string): Promise<string> => {
   } catch (error) {
     console.error('Error getting user display name:', error);
     return 'Anonim';
+  }
+};
+
+// Ban/unban user
+export const banUser = async (userId: string, reason?: string) => {
+  try {
+    const userQuery = query(collection(db, 'users'), where('uid', '==', userId));
+    const userSnapshot = await getDocs(userQuery);
+
+    if (!userSnapshot.empty) {
+      const userDoc = userSnapshot.docs[0];
+      await updateDoc(doc(db, 'users', userDoc.id), {
+        banned: true,
+        banReason: reason || 'Admin tarafından banlandı',
+        bannedAt: Timestamp.now()
+      });
+      return { success: true };
+    }
+
+    return { success: false, error: 'Kullanıcı bulunamadı' };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const unbanUser = async (userId: string) => {
+  try {
+    const userQuery = query(collection(db, 'users'), where('uid', '==', userId));
+    const userSnapshot = await getDocs(userQuery);
+
+    if (!userSnapshot.empty) {
+      const userDoc = userSnapshot.docs[0];
+      await updateDoc(doc(db, 'users', userDoc.id), {
+        banned: false,
+        banReason: null,
+        bannedAt: null,
+        unbannedAt: Timestamp.now()
+      });
+      return { success: true };
+    }
+
+    return { success: false, error: 'Kullanıcı bulunamadı' };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Check if user is banned
+export const isUserBanned = async (userId: string) => {
+  try {
+    const userQuery = query(collection(db, 'users'), where('uid', '==', userId));
+    const userSnapshot = await getDocs(userQuery);
+
+    if (!userSnapshot.empty) {
+      const userData = userSnapshot.docs[0].data();
+      return { success: true, banned: userData.banned || false, reason: userData.banReason };
+    }
+
+    return { success: true, banned: false };
+  } catch (error: any) {
+    return { success: false, error: error.message, banned: false };
+  }
+};
+
+// Bulk operations
+export const bulkDeleteEntries = async (entryIds: string[]) => {
+  try {
+    const deletePromises = entryIds.map(async (entryId) => {
+      // Delete entry
+      await deleteDoc(doc(db, 'entries', entryId));
+
+      // Delete related replies
+      const repliesQuery = query(collection(db, 'replies'), where('entryId', '==', entryId));
+      const repliesSnapshot = await getDocs(repliesQuery);
+      const replyDeletePromises = repliesSnapshot.docs.map(replyDoc => 
+        deleteDoc(doc(db, 'replies', replyDoc.id))
+      );
+      await Promise.all(replyDeletePromises);
+
+      // Delete related votes
+      const votesQuery = query(collection(db, 'votes'), where('entryId', '==', entryId));
+      const votesSnapshot = await getDocs(votesQuery);
+      const voteDeletePromises = votesSnapshot.docs.map(voteDoc => 
+        deleteDoc(doc(db, 'votes', voteDoc.id))
+      );
+      await Promise.all(voteDeletePromises);
+    });
+
+    await Promise.all(deletePromises);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const bulkDeleteReplies = async (replyIds: string[]) => {
+  try {
+    const deletePromises = replyIds.map(replyId => 
+      deleteDoc(doc(db, 'replies', replyId))
+    );
+    await Promise.all(deletePromises);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Get system stats
+export const getSystemStats = async () => {
+  try {
+    const [entriesSnapshot, repliesSnapshot, usersSnapshot] = await Promise.all([
+      getDocs(collection(db, 'entries')),
+      getDocs(collection(db, 'replies')),
+      getDocs(collection(db, 'users'))
+    ]);
+
+    const today = new Date();
+    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+    const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const lastMonth = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    let todayEntries = 0;
+    let yesterdayEntries = 0;
+    let weekEntries = 0;
+    let monthEntries = 0;
+    let bannedUsers = 0;
+    let activeUsers = 0;
+
+    entriesSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      const createdAt = data.createdAt?.toDate();
+      if (createdAt) {
+        if (createdAt >= yesterday && createdAt < today) {
+          todayEntries++;
+        }
+        if (createdAt >= lastWeek) {
+          weekEntries++;
+        }
+        if (createdAt >= lastMonth) {
+          monthEntries++;
+        }
+      }
+    });
+
+    usersSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.banned) {
+        bannedUsers++;
+      } else {
+        activeUsers++;
+      }
+    });
+
+    return {
+      success: true,
+      stats: {
+        totalEntries: entriesSnapshot.size,
+        totalReplies: repliesSnapshot.size,
+        totalUsers: usersSnapshot.size,
+        todayEntries,
+        weekEntries,
+        monthEntries,
+        bannedUsers,
+        activeUsers
+      }
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Get detailed user info
+export const getUserDetails = async (userId: string) => {
+  try {
+    const userQuery = query(collection(db, 'users'), where('uid', '==', userId));
+    const userSnapshot = await getDocs(userQuery);
+
+    if (userSnapshot.empty) {
+      return { success: false, error: 'Kullanıcı bulunamadı' };
+    }
+
+    const userData = userSnapshot.docs[0].data();
+
+    // Get user's entries
+    const entriesQuery = query(collection(db, 'entries'), where('authorId', '==', userId));
+    const entriesSnapshot = await getDocs(entriesQuery);
+
+    // Get user's replies
+    const repliesQuery = query(collection(db, 'replies'), where('authorId', '==', userId));
+    const repliesSnapshot = await getDocs(repliesQuery);
+
+    return {
+      success: true,
+      user: {
+        ...userData,
+        id: userSnapshot.docs[0].id,
+        totalEntries: entriesSnapshot.size,
+        totalReplies: repliesSnapshot.size
+      }
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
   }
 };

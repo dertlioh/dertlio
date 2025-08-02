@@ -138,7 +138,7 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>({});
+  const [userVotes, setUserVotes] = useState<{ [key: string]: 'like' | 'dislike' | null }>([]);
   const [entriesWithReplies, setEntriesWithReplies] = useState<{ [key: string]: Reply[] }>( {});
 
   const [newEntry, setNewEntry] = useState({ title: '', content: '' });
@@ -456,6 +456,13 @@ export default function CompanyPage({ companyName }: { companyName: string }) {
                     <span className="hidden sm:inline">Bu Firma Hakkında Yaz</span>
                     <span className="sm:hidden">Yaz</span>
                   </button>
+                  <Link 
+                    href="/profil"
+                    className="text-gray-600 hover:text-gray-800 cursor-pointer p-2"
+                    title="Profilim"
+                  >
+                    <i className="ri-user-line"></i>
+                  </Link>
                   <button 
                     onClick={handleLogout}
                     className="text-gray-600 hover:text-gray-800 cursor-pointer p-2"
